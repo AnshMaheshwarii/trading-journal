@@ -3,11 +3,49 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 /**
  * Security model
  * - Per-user encrypted state sealed with PIN (PBKDF2 + AES-GCM)
- * - NEW: Tamper-evident trade log via hash chain (SHA-256)
- * - NEW: Auto-lock after 2 minutes of inactivity
+ * - Tamper-evident trade log via hash chain (SHA-256)
+ * - Auto-lock after 2 minutes of inactivity
+ *
+ * Phase 4
+ * - Unified, minimal authentication screen (no split hero panel)
+ * - Consistent line-icon system replacing emoji glyphs
+ * - Trade model now records Return % instead of decimal odds
+ * - Bet types trimmed to a single seed ("Draw Cover") + user-defined custom types
+ * - Leagues are now a rich, searchable-by-scroll dropdown with custom entries
+ * - Total Return % (sum of every trade's % return) replaces baseline ROI
  */
 
 const ACCOUNTS_KEY = "TDASH_ACCOUNTS_V1";
+
+const DEFAULT_BET_TYPES = ["Draw Cover"];
+
+const DEFAULT_LEAGUES = [
+  "Premier League",
+  "La Liga",
+  "Bundesliga",
+  "Serie A",
+  "Ligue 1",
+  "Champions League",
+  "Europa League",
+  "Conference League",
+  "World Cup",
+  "Euro",
+  "Copa America",
+  "Nations League",
+  "MLS",
+  "Saudi Pro League",
+  "Indian Super League",
+  "NBA",
+  "WNBA",
+  "EuroLeague Basketball",
+  "NCAA Basketball"
+];
+
+const OUTCOMES = [
+  { value: "win", label: "Win", icon: "check" },
+  { value: "loss", label: "Loss", icon: "x" },
+  { value: "void", label: "Void", icon: "circle" }
+];
 
 // ---------- base64 helpers ----------
 const toB64 = (buf) => btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(buf))));
@@ -65,6 +103,12 @@ async function computeTradeHash(prevHash, trade) {
   const base =
     "prev:" + (prevHash || "") +
     "|date:" + (trade.date || "") +
+    "|bet:" + (trade.betType || "") +
+    "|league:" + (trade.league || "") +
+    "|stake:" + String(trade.stake != null ? trade.stake : "") +
+    "|returnPct:" + String(trade.returnPct != null ? trade.returnPct : "") +
+    "|return:" + String(trade.returnReceived != null ? trade.returnReceived : "") +
+    "|outcome:" + (trade.outcome || "") +
     "|pnl:" + String(trade.profitLoss) +
     "|note:" + (trade.note || "");
   return sha256Hex(base);
@@ -81,7 +125,17 @@ async function rebuildChain(tradesNewestFirst) {
 
   for (let i = 0; i < chrono.length; i++) {
     const t = chrono[i];
-    const core = { date: t.date, profitLoss: t.profitLoss, note: t.note || "" };
+    const core = {
+      date: t.date,
+      betType: t.betType,
+      league: t.league,
+      stake: t.stake,
+      returnPct: t.returnPct,
+      returnReceived: t.returnReceived,
+      outcome: t.outcome,
+      profitLoss: t.profitLoss,
+      note: t.note || ""
+    };
     const expectedHash = await computeTradeHash(prev, core);
 
     // if incoming already had hashes, we can compare; otherwise we assign
@@ -119,12 +173,184 @@ function saveAccounts(obj) {
 
 // ---------- defaults / utils ----------
 function defaultState() {
-  return { portfolioValue: 50000, totalProfit: 0, trades: [], roiBaseline: 50000 };
+  return { portfolioValue: 50000, totalProfit: 0, trades: [], customBetTypes: [], customLeagues: [], roiBaseline: 50000 };
+}
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+function emptyTradeForm() {
+  return {
+    date: todayISO(),
+    betType: "",
+    league: "",
+    stake: "",
+    returnAmount: "",
+    outcome: "win",
+    note: ""
+  };
 }
 const fmtINR = (n) =>
   typeof n === "number" && !Number.isNaN(n)
     ? n.toLocaleString("en-IN", { maximumFractionDigits: 2 })
     : "0";
+const fmtPct = (n) => {
+  if (typeof n !== "number" || Number.isNaN(n)) return "0";
+  const rounded = Math.round(n * 100) / 100;
+  return rounded.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+};
+
+// ============== ICONS ==============
+// A single consistent, minimal line-icon family (stroke based, 1.6px weight).
+function Icon({ name, size = 15, style }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style
+  };
+  switch (name) {
+    case "lock":
+      return (
+        <svg {...common}>
+          <rect x="4.5" y="10.5" width="15" height="10" rx="2.2" />
+          <path d="M7.5 10.5V7.8a4.5 4.5 0 0 1 9 0v2.7" />
+        </svg>
+      );
+    case "chain":
+      return (
+        <svg {...common}>
+          <path d="M9.5 14.5l5-5" />
+          <path d="M8 16.2l-1.6 1.6a3 3 0 0 1-4.2-4.2L4 11.8" />
+          <path d="M16 7.8l1.6-1.6a3 3 0 1 1 4.2 4.2L20 12.2" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.2" />
+          <path d="M12 8v4.2l3 1.8" />
+        </svg>
+      );
+    case "undo":
+      return (
+        <svg {...common}>
+          <path d="M8.5 8.5H5V5" />
+          <path d="M5 8.5a7.5 7.5 0 1 1-2 5.4" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg {...common}>
+          <path d="M12 4v11" />
+          <path d="M7.5 11.5L12 16l4.5-4.5" />
+          <path d="M5 18.5h14" />
+        </svg>
+      );
+    case "upload":
+      return (
+        <svg {...common}>
+          <path d="M12 20V9" />
+          <path d="M7.5 12.5L12 8l4.5 4.5" />
+          <path d="M5 18.5h14" />
+        </svg>
+      );
+    case "save":
+      return (
+        <svg {...common}>
+          <path d="M5 4.8h11.2L19 7.6V19a.9.9 0 0 1-.9.9H5.9A.9.9 0 0 1 5 19V4.8z" />
+          <path d="M8 4.8V10h8V4.8" />
+          <path d="M8.3 14.2h7.4" />
+        </svg>
+      );
+    case "trash":
+      return (
+        <svg {...common}>
+          <path d="M5 7h14" />
+          <path d="M9.5 7V5.3a1.3 1.3 0 0 1 1.3-1.3h2.4a1.3 1.3 0 0 1 1.3 1.3V7" />
+          <path d="M7.2 7l.8 12a1.5 1.5 0 0 0 1.5 1.4h4.9a1.5 1.5 0 0 0 1.5-1.4l.8-12" />
+        </svg>
+      );
+    case "power":
+      return (
+        <svg {...common}>
+          <path d="M12 4v7.2" />
+          <path d="M7 6.5a7.2 7.2 0 1 0 10 0" />
+        </svg>
+      );
+    case "plus":
+      return (
+        <svg {...common}>
+          <path d="M12 5v14" />
+          <path d="M5 12h14" />
+        </svg>
+      );
+    case "trend":
+      return (
+        <svg {...common}>
+          <path d="M4 16.5l5.5-6 4 3.5L20 6" />
+          <path d="M14.5 6H20v5.5" />
+        </svg>
+      );
+    case "bars":
+      return (
+        <svg {...common}>
+          <path d="M5 19.5V12" />
+          <path d="M12 19.5V5" />
+          <path d="M19 19.5v-8.5" />
+        </svg>
+      );
+    case "list":
+      return (
+        <svg {...common}>
+          <path d="M8.5 6.5h10" />
+          <path d="M8.5 12h10" />
+          <path d="M8.5 17.5h10" />
+          <path d="M5 6.5h.01" />
+          <path d="M5 12h.01" />
+          <path d="M5 17.5h.01" />
+        </svg>
+      );
+    case "compass":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.2" />
+          <path d="M14.6 9.4l-2 5.2-5.2 2 2-5.2 5.2-2z" />
+        </svg>
+      );
+    case "check":
+      return (
+        <svg {...common}>
+          <path d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+      );
+    case "x":
+      return (
+        <svg {...common}>
+          <path d="M6 6l12 12" />
+          <path d="M18 6L6 18" />
+        </svg>
+      );
+    case "circle":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="7.2" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg {...common}>
+          <path d="M12 3.8l6.5 2.4v5.4c0 4.3-2.8 7.4-6.5 8.6-3.7-1.2-6.5-4.3-6.5-8.6V6.2L12 3.8z" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 // ============== APP ==============
 export default function App() {
@@ -133,6 +359,7 @@ export default function App() {
   const [activeUser, setActiveUser] = useState("");
   const [cryptoKey, setCryptoKey] = useState(null);
   const [authBanner, setAuthBanner] = useState("");
+  const [authMode, setAuthMode] = useState("unlock"); // "unlock" | "create"
 
   useEffect(() => {
     const acc = loadAccounts();
@@ -143,11 +370,16 @@ export default function App() {
   const [portfolioValue, setPortfolioValue] = useState(50000);
   const [totalProfit, setTotalProfit] = useState(0);
   const [trades, setTrades] = useState([]); // newest-first; each trade gets {prevHash, hash}
+  const [customBetTypes, setCustomBetTypes] = useState([]);
+  const [customLeagues, setCustomLeagues] = useState([]);
   const [roiBaseline, setRoiBaseline] = useState(50000);
 
   const [portfolioInput, setPortfolioInput] = useState("");
-  const [profitLossInput, setProfitLossInput] = useState("");
-  const [noteInput, setNoteInput] = useState("");
+  const [tradeForm, setTradeForm] = useState(emptyTradeForm());
+  const [showCustomBetInput, setShowCustomBetInput] = useState(false);
+  const [newBetTypeInput, setNewBetTypeInput] = useState("");
+  const [showCustomLeagueInput, setShowCustomLeagueInput] = useState(false);
+  const [newLeagueInput, setNewLeagueInput] = useState("");
 
   const [banner, setBanner] = useState({ type: "", msg: "" });
   const [confirmClear, setConfirmClear] = useState(false);
@@ -156,19 +388,38 @@ export default function App() {
   // integrity state
   const [chainOK, setChainOK] = useState(true);
 
+  const betTypeOptions = useMemo(() => {
+    return DEFAULT_BET_TYPES.concat(customBetTypes.filter(function (b) { return !DEFAULT_BET_TYPES.includes(b); }));
+  }, [customBetTypes]);
+
+  const leagueOptions = useMemo(() => {
+    return DEFAULT_LEAGUES.concat(customLeagues.filter(function (l) { return !DEFAULT_LEAGUES.includes(l); }));
+  }, [customLeagues]);
+
   // -------- KPIs --------
   const successRate = useMemo(() => {
     if (trades.length === 0) return 0;
-    const wins = trades.filter(function (t) { return t.profitLoss > 0; }).length;
-    return Math.round((wins / trades.length) * 100);
+    const counted = trades.filter(function (t) { return t.outcome ? t.outcome !== "void" : true; });
+    if (counted.length === 0) return 0;
+    const wins = counted.filter(function (t) { return t.outcome ? t.outcome === "win" : t.profitLoss > 0; }).length;
+    return Math.round((wins / counted.length) * 100);
   }, [trades]);
 
+  // Total Return % = sum of every trade's own percentage return.
+  const totalReturnPct = useMemo(() => {
+    return trades.reduce(function (sum, t) {
+      const p = typeof t.returnPct === "number" ? t.returnPct : parseFloat(t.returnPct);
+      return sum + (Number.isNaN(p) ? 0 : p);
+    }, 0);
+  }, [trades]);
+
+  // ROI = (Current Portfolio - Initial Portfolio) / Initial Portfolio x 100
   const roiPct = useMemo(() => {
     if (!roiBaseline || roiBaseline <= 0) return 0;
-    return Number(((totalProfit / roiBaseline) * 100).toFixed(2));
-  }, [totalProfit, roiBaseline]);
+    return Number((((portfolioValue - roiBaseline) / roiBaseline) * 100).toFixed(2));
+  }, [portfolioValue, roiBaseline]);
 
-  const snapshot = () => ({ portfolioValue, totalProfit, trades, roiBaseline });
+  const snapshot = () => ({ portfolioValue, totalProfit, trades, customBetTypes, customLeagues, roiBaseline });
 
   // -------- AUTH ACTIONS --------
   const onCreate = async () => {
@@ -196,6 +447,8 @@ export default function App() {
       setPortfolioValue(state.portfolioValue);
       setTotalProfit(state.totalProfit);
       setTrades(state.trades);
+      setCustomBetTypes(state.customBetTypes);
+      setCustomLeagues(state.customLeagues);
       setRoiBaseline(state.roiBaseline);
       setChainOK(true);
       flash("ok", "Account created & unlocked");
@@ -231,7 +484,9 @@ export default function App() {
       setPortfolioValue(data.portfolioValue);
       setTotalProfit(data.totalProfit);
       setTrades(rebuilt.tradesWithHashes);
-      setRoiBaseline(data.roiBaseline);
+      setCustomBetTypes(Array.isArray(data.customBetTypes) ? data.customBetTypes : []);
+      setCustomLeagues(Array.isArray(data.customLeagues) ? data.customLeagues : []);
+      setRoiBaseline(typeof data.roiBaseline === "number" ? data.roiBaseline : data.portfolioValue);
       flash("ok", "Unlocked");
     } catch {
       setAuthBanner("Invalid PIN");
@@ -293,7 +548,7 @@ useEffect(() => {
     await doEncryptedSave();
   })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [trades, portfolioValue, totalProfit, roiBaseline, activeUser, cryptoKey]);
+}, [trades, portfolioValue, totalProfit, customBetTypes, customLeagues, roiBaseline, activeUser, cryptoKey]);
 
   // -------- activity / auto-lock (2 minutes) --------
   const LOCK_MS = 2 * 60 * 1000;
@@ -349,30 +604,115 @@ useEffect(() => {
     flash("ok", "Portfolio updated");
   };
 
-  const handleAddTrade = async () => {
-    const pnl = parseFloat(profitLossInput);
-    if (Number.isNaN(pnl)) {
-      flash("err", "Enter a valid Profit/Loss (use negative for loss)");
+  // -------- trade form field updates --------
+  const setField = (key, value) => {
+    setTradeForm(function (f) { return { ...f, [key]: value }; });
+  };
+
+  const onOutcomeChange = (value) => {
+    setTradeForm(function (f) {
+      const next = { ...f, outcome: value };
+      // Void bets return the stake by default, still editable
+      if (value === "void") {
+        const stakeNum = parseFloat(f.stake);
+        if (!Number.isNaN(stakeNum)) next.returnAmount = String(stakeNum);
+      }
+      return next;
+    });
+  };
+
+  const onBetTypeSelect = (value) => {
+    if (value === "__add_custom__") {
+      setShowCustomBetInput(true);
       return;
     }
+    setShowCustomBetInput(false);
+    setField("betType", value);
+  };
+
+  const confirmCustomBetType = () => {
+    const name = (newBetTypeInput || "").trim();
+    if (!name) {
+      setShowCustomBetInput(false);
+      return;
+    }
+    if (!DEFAULT_BET_TYPES.includes(name) && !customBetTypes.includes(name)) {
+      setCustomBetTypes(function (prev) { return [...prev, name]; });
+      flash("ok", "Custom bet type added");
+    }
+    setField("betType", name);
+    setNewBetTypeInput("");
+    setShowCustomBetInput(false);
+  };
+
+  const onLeagueSelect = (value) => {
+    if (value === "__add_custom__") {
+      setShowCustomLeagueInput(true);
+      return;
+    }
+    setShowCustomLeagueInput(false);
+    setField("league", value);
+  };
+
+  const confirmCustomLeague = () => {
+    const name = (newLeagueInput || "").trim();
+    if (!name) {
+      setShowCustomLeagueInput(false);
+      return;
+    }
+    if (!DEFAULT_LEAGUES.includes(name) && !customLeagues.includes(name)) {
+      setCustomLeagues(function (prev) { return [...prev, name]; });
+      flash("ok", "Custom league added");
+    }
+    setField("league", name);
+    setNewLeagueInput("");
+    setShowCustomLeagueInput(false);
+  };
+
+  const tradeProfitPreview = useMemo(() => {
+    const stake = parseFloat(tradeForm.stake);
+    const ret = parseFloat(tradeForm.returnAmount);
+    if (Number.isNaN(stake) || Number.isNaN(ret)) return null;
+    return Number((ret - stake).toFixed(2));
+  }, [tradeForm.stake, tradeForm.returnAmount]);
+
+  const handleAddTrade = async () => {
+    const stake = parseFloat(tradeForm.stake);
+    const ret = parseFloat(tradeForm.returnAmount);
+
+    if (!tradeForm.date) { flash("err", "Pick a date for the trade"); return; }
+    if (!tradeForm.betType) { flash("err", "Select or add a bet type"); return; }
+    if (!tradeForm.league) { flash("err", "Select or add a league"); return; }
+    if (Number.isNaN(stake) || stake <= 0) { flash("err", "Enter a valid stake (greater than 0)"); return; }
+    if (Number.isNaN(ret) || ret < 0) { flash("err", "Enter a valid return amount (0 or more)"); return; }
+    if (!tradeForm.outcome) { flash("err", "Select an outcome"); return; }
+
+    const profitLoss = Number((ret - stake).toFixed(2));
+    const returnPct = Number((((ret - stake) / stake) * 100).toFixed(2));
 
     const core = {
       id: Date.now(),
-      profitLoss: Number(pnl.toFixed(2)),
-      note: (noteInput || "").trim(),
-      date: new Date().toISOString().slice(0, 10)
+      date: tradeForm.date,
+      betType: tradeForm.betType,
+      league: (tradeForm.league || "").trim(),
+      stake: Number(stake.toFixed(2)),
+      returnPct: returnPct,
+      returnReceived: Number(ret.toFixed(2)),
+      outcome: tradeForm.outcome,
+      profitLoss: profitLoss,
+      note: (tradeForm.note || "").trim()
     };
+
     const prevHash = trades.length > 0 ? trades[0].hash : "";
     const hash = await computeTradeHash(prevHash, core);
-
     const newTrade = { ...core, prevHash: prevHash, hash: hash };
 
     setTrades(function (prev) { return [newTrade, ...prev]; }); // newest first
-    setTotalProfit(function (p) { return Number((p + newTrade.profitLoss).toFixed(2)); });
-    setPortfolioValue(function (p) { return Number((p + newTrade.profitLoss).toFixed(2)); });
-    setProfitLossInput("");
-    setNoteInput("");
-    flash("ok", "Trade added");
+    setTotalProfit(function (p) { return Number((p + profitLoss).toFixed(2)); });
+    setPortfolioValue(function (p) { return Number((p + profitLoss).toFixed(2)); });
+
+    setTradeForm(emptyTradeForm());
+    flash("ok", "Trade recorded");
   };
 
   const undoLastTrade = () => {
@@ -421,7 +761,9 @@ useEffect(() => {
           setPortfolioValue(parsed.portfolioValue);
           setTotalProfit(parsed.totalProfit);
           setTrades(rebuilt.tradesWithHashes);
-          if (typeof parsed.roiBaseline === "number") setRoiBaseline(parsed.roiBaseline);
+          setCustomBetTypes(Array.isArray(parsed.customBetTypes) ? parsed.customBetTypes : []);
+          setCustomLeagues(Array.isArray(parsed.customLeagues) ? parsed.customLeagues : []);
+          setRoiBaseline(typeof parsed.roiBaseline === "number" ? parsed.roiBaseline : parsed.portfolioValue);
           setChainOK(rebuilt.ok);
           flash("ok", "Imported (revalidated)");
         } else {
@@ -432,11 +774,6 @@ useEffect(() => {
       }
     };
     reader.readAsText(file);
-  };
-
-  const setBaselineToCurrent = () => {
-    setRoiBaseline(portfolioValue);
-    flash("ok", "ROI baseline set to current portfolio");
   };
 
   // ---------- MONTHLY SUMMARY ----------
@@ -705,7 +1042,9 @@ useEffect(() => {
     green: "#2ecc84",
     greenDim: "rgba(46,204,132,0.11)",
     red: "#f5586b",
-    redDim: "rgba(245,88,107,0.11)"
+    redDim: "rgba(245,88,107,0.11)",
+    amber: "#e8a94c",
+    amberDim: "rgba(232,169,76,0.13)"
   };
 
   // ---------- styles ----------
@@ -746,7 +1085,7 @@ useEffect(() => {
       color: type === "ok" ? C.green : C.red, marginBottom: 18 }),
 
     // hero + kpi
-    heroGrid: { display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 14, marginBottom: 14 },
+    heroGrid: { display: "grid", gridTemplateColumns: "1.35fr 1fr", gap: 14, marginBottom: 14 },
     hero: { background: "linear-gradient(160deg, rgba(91,141,239,0.12), rgba(13,15,20,0.3))", border: "1px solid " + C.border, borderRadius: 18, padding: "22px 22px 20px", display: "flex", flexDirection: "column", justifyContent: "space-between" },
     heroLabel: { fontSize: 11.5, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.06em" },
     heroValue: { ...NUM, fontSize: 36, fontWeight: 700, letterSpacing: "-0.03em", margin: "10px 0 16px", lineHeight: 1 },
@@ -761,7 +1100,7 @@ useEffect(() => {
     panel: { background: C.surface, border: "1px solid " + C.border, borderRadius: 16, padding: 20 },
     panelHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 16 },
     panelTitleWrap: { display: "flex", alignItems: "center", gap: 9 },
-    panelIcon: { width: 25, height: 25, borderRadius: 7, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, flexShrink: 0 },
+    panelIcon: { width: 25, height: 25, borderRadius: 7, background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
     panelTitle: { fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: "-0.015em" },
     panelSub: { fontSize: 11.5, color: C.textFaint, margin: "2px 0 0", letterSpacing: "-0.005em" },
 
@@ -777,21 +1116,72 @@ useEffect(() => {
 
     chartWrap: { width: "100%", borderRadius: 12, border: "1px solid " + C.border, background: "#05060a", padding: 8, marginTop: 14, overflowX: "auto" },
 
-    tradesScroll: { maxHeight: 380, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8 },
-    tradeItem: { padding: "12px 14px", borderRadius: 11, background: "#05060a", border: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" },
-    note: { color: C.textDim, fontSize: 12, marginTop: 5, letterSpacing: "-0.005em" },
-    badge: (win) => ({ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, marginLeft: 8, background: win ? C.greenDim : C.redDim, color: win ? C.green : C.red, letterSpacing: "0.04em" }),
+    tradesScroll: { maxHeight: 460, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8 },
+    tradeItem: { padding: "13px 14px", borderRadius: 12, background: "#05060a", border: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" },
+    tradeMetaRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6 },
+    tradeChip: { fontSize: 10.5, color: C.textDim, background: C.surfaceAlt, border: "1px solid " + C.border, padding: "3px 8px", borderRadius: 999, letterSpacing: "-0.005em" },
+    note: { color: C.textDim, fontSize: 12, marginTop: 7, letterSpacing: "-0.005em", lineHeight: 1.5 },
+    badge: (kind) => {
+      const map = {
+        win: { bg: C.greenDim, fg: C.green },
+        loss: { bg: C.redDim, fg: C.red },
+        void: { bg: C.amberDim, fg: C.amber }
+      };
+      const t = map[kind] || map.loss;
+      return { fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: t.bg, color: t.fg, letterSpacing: "0.04em", flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4 };
+    },
     green: { ...NUM, color: C.green, fontWeight: 700 },
     red: { ...NUM, color: C.red, fontWeight: 700 },
+    amberText: { ...NUM, color: C.amber, fontWeight: 700 },
 
     table: { width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontSize: 13 },
     th: { padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.05em" },
     td: { padding: "10px 10px", background: "#05060a", letterSpacing: "-0.005em" },
 
-    // auth
+    // ---- trade entry form ----
+    formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
+    formFull: { gridColumn: "1 / -1" },
+    formGroup: { display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
+    formLabel: { fontSize: 11, fontWeight: 600, color: C.textDim, letterSpacing: "0.01em" },
+    formInput: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em" },
+    formSelect: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em", cursor: "pointer" },
+    formTextarea: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em", resize: "vertical", minHeight: 60 },
+    formHint: { fontSize: 11, color: C.textFaint, letterSpacing: "-0.005em" },
+    outcomeRow: { display: "flex", gap: 8 },
+    outcomeBtn: (active, kind) => {
+      const map = { win: C.green, loss: C.red, void: C.amber };
+      const color = map[kind];
+      return {
+        flex: 1, padding: "10px 10px", borderRadius: 9, border: "1px solid " + (active ? color : C.border),
+        background: active ? color + "22" : "#05060a", color: active ? color : C.textDim,
+        cursor: "pointer", fontSize: 12.5, fontWeight: 600, fontFamily: FONT_BODY, letterSpacing: "-0.005em",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 6, transition: "all 0.12s ease"
+      };
+    },
+    profitPreview: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 15px", borderRadius: 10, background: C.surfaceAlt, border: "1px solid " + C.border, marginTop: 4 },
+    profitPreviewLabel: { fontSize: 11.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.02em" },
+    profitPreviewValue: (v) => ({ ...NUM, fontSize: 17, fontWeight: 700, color: v == null ? C.textFaint : v >= 0 ? C.green : C.red }),
+
+    // auth — single centered card
     authShell: { minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.text, fontFamily: FONT_BODY, WebkitFontSmoothing: "antialiased", padding: 24 },
-    authCard: { width: "100%", maxWidth: 360 },
-    authInput: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", boxSizing: "border-box", marginTop: 10, fontSize: 14, fontFamily: FONT_BODY, letterSpacing: "-0.005em" }
+    authCard: { width: "100%", maxWidth: 380, background: C.surface, border: "1px solid " + C.border, borderRadius: 18, padding: "32px 30px", position: "relative", overflow: "hidden" },
+    authGlow: { position: "absolute", top: -120, right: -80, width: 240, height: 240, borderRadius: "50%", background: "radial-gradient(circle, rgba(91,141,239,0.16), transparent 70%)", pointerEvents: "none" },
+    authBrandRow: { display: "flex", alignItems: "center", gap: 9, marginBottom: 22, position: "relative" },
+    authBrandMark: { width: 28, height: 28, borderRadius: 8, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT_DISPLAY, fontWeight: 800, fontSize: 13, color: "#07080c" },
+    authBrandName: { fontFamily: FONT_DISPLAY, fontWeight: 700, fontSize: 14, letterSpacing: "-0.01em" },
+    authTabRow: { display: "flex", gap: 4, background: "#05060a", border: "1px solid " + C.border, borderRadius: 10, padding: 3, marginBottom: 22, position: "relative" },
+    authTab: (active) => ({
+      flex: 1, textAlign: "center", padding: "8px 10px", borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+      color: active ? C.text : C.textFaint, background: active ? C.surfaceAlt : "transparent",
+      border: "none", cursor: "pointer", fontFamily: FONT_BODY, letterSpacing: "-0.005em"
+    }),
+    authCardTitle: { fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6, position: "relative" },
+    authCardSub: { color: C.textFaint, fontSize: 13, marginBottom: 22, letterSpacing: "-0.005em", lineHeight: 1.5, position: "relative" },
+    authFieldLabel: { fontSize: 11.5, fontWeight: 600, color: C.textDim, marginBottom: 7, display: "block", letterSpacing: "0.01em" },
+    authInput: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", boxSizing: "border-box", fontSize: 14, fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
+    authFieldWrap: { marginBottom: 16, position: "relative" },
+    authFootnote: { fontSize: 11, color: C.textFaint, marginTop: 22, textAlign: "center", lineHeight: 1.7, letterSpacing: "-0.005em", position: "relative" },
+    authFootnoteStrong: { color: C.textDim, fontWeight: 600 }
   };
 
   const FontImport = () => (
@@ -803,31 +1193,71 @@ useEffect(() => {
     return (
       <div style={s.authShell}>
         <FontImport />
+
         <div style={s.authCard}>
-          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 5 }}>Welcome back</div>
-          <div style={{ color: C.textFaint, fontSize: 13, marginBottom: 20, letterSpacing: "-0.005em" }}>Sign in to your encrypted journal</div>
+          <div style={s.authGlow} />
+
+          <div style={s.authBrandRow}>
+            <div style={s.authBrandMark}>T</div>
+            <div style={s.authBrandName}>TDASH</div>
+          </div>
+
+          <div style={s.authTabRow}>
+            <button style={s.authTab(authMode === "unlock")} onClick={() => { setAuthMode("unlock"); setAuthBanner(""); }}>
+              Unlock
+            </button>
+            <button style={s.authTab(authMode === "create")} onClick={() => { setAuthMode("create"); setAuthBanner(""); }}>
+              Create account
+            </button>
+          </div>
+
+          <div style={s.authCardTitle}>
+            {authMode === "unlock" ? "Welcome back" : "New journal"}
+          </div>
+          <div style={s.authCardSub}>
+            {authMode === "unlock"
+              ? "Sign in with your username and PIN to unlock your journal."
+              : "Set a username and 4-digit PIN. This seals a fresh, empty journal."}
+          </div>
 
           {authBanner ? <div style={s.banner("err")}>{authBanner}</div> : null}
 
-          <input
-            style={s.authInput}
-            placeholder="Username"
-            value={auth.username}
-            onChange={(e) => setAuth({ ...auth, username: e.target.value })}
-          />
-          <input
-            style={s.authInput}
-            placeholder="4-digit PIN"
-            inputMode="numeric"
-            maxLength={4}
-            value={auth.pin}
-            onChange={(e) => {
-              if (/^\d{0,4}$/.test(e.target.value)) setAuth({ ...auth, pin: e.target.value });
-            }}
-          />
-          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-            <button style={{ ...s.btnPrimary, flex: 1, padding: "11px 15px", fontSize: 13 }} onClick={onCreate}>Create Account</button>
-            <button style={{ ...s.btnGhost, flex: 1, padding: "11px 15px", fontSize: 13 }} onClick={onUnlock}>Unlock</button>
+          <div style={s.authFieldWrap}>
+            <label style={s.authFieldLabel}>Username</label>
+            <input
+              style={s.authInput}
+              placeholder="e.g. rahul_trades"
+              value={auth.username}
+              onChange={(e) => setAuth({ ...auth, username: e.target.value })}
+            />
+          </div>
+          <div style={s.authFieldWrap}>
+            <label style={s.authFieldLabel}>4-digit PIN</label>
+            <input
+              style={s.authInput}
+              placeholder="••••"
+              inputMode="numeric"
+              maxLength={4}
+              value={auth.pin}
+              onChange={(e) => {
+                if (/^\d{0,4}$/.test(e.target.value)) setAuth({ ...auth, pin: e.target.value });
+              }}
+              onKeyDown={(e) => e.key === "Enter" && (authMode === "unlock" ? onUnlock() : onCreate())}
+            />
+          </div>
+
+          <button
+            style={{ ...s.btnPrimary, width: "100%", padding: "12px 15px", fontSize: 13.5, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+            onClick={authMode === "unlock" ? onUnlock : onCreate}
+          >
+            <Icon name="lock" size={14} />
+            {authMode === "unlock" ? "Unlock journal" : "Create & unlock"}
+          </button>
+
+          <div style={s.authFootnote}>
+            <span style={s.authFootnoteStrong}>Encrypted Local Trading Journal</span>
+            <br />
+            Part of Zenith-Edge Systems · Developed by Ansh Maheshwari
           </div>
         </div>
       </div>
@@ -859,11 +1289,13 @@ useEffect(() => {
 
         <div style={s.sideSectionLabel}>Data</div>
         <button style={s.sideBtn} onClick={undoLastTrade} disabled={trades.length === 0}>
-          ⏪ Undo last trade
+          <Icon name="undo" /> Undo last trade
         </button>
-        <button style={s.sideBtn} onClick={exportJSON}>⬇ Export JSON</button>
+        <button style={s.sideBtn} onClick={exportJSON}>
+          <Icon name="download" /> Export JSON
+        </button>
         <label style={s.sideBtn}>
-          ⬆ Import JSON
+          <Icon name="upload" /> Import JSON
           <input
             type="file"
             accept="application/json"
@@ -878,12 +1310,12 @@ useEffect(() => {
             flash(ok ? "ok" : "err", ok ? "Saved" : "Save failed");
           }}
         >
-          💾 Save now
+          <Icon name="save" /> Save now
         </button>
 
         {!confirmClear ? (
           <button style={{ ...s.sideBtn, ...s.sideBtnDanger }} onClick={() => setConfirmClear(true)} disabled={trades.length === 0}>
-            🧹 Clear all trades
+            <Icon name="trash" /> Clear all trades
           </button>
         ) : (
           <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
@@ -897,7 +1329,7 @@ useEffect(() => {
 
         <div style={s.sideFooter}>
           <button style={{ ...s.sideBtn, ...s.sideBtnDanger }} onClick={onLogout}>
-            ⏻ Logout / Switch user
+            <Icon name="power" /> Logout / Switch user
           </button>
         </div>
       </aside>
@@ -941,7 +1373,7 @@ useEffect(() => {
 
             <div style={s.kpiGrid}>
               <div style={s.kpiCard}>
-                <div style={s.kpiLabel}>Total Profit</div>
+                <div style={s.kpiLabel}>Net Profit</div>
                 <div style={{ ...s.kpiValue, color: totalProfit >= 0 ? C.green : C.red }}>
                   ₹{fmtINR(totalProfit)}
                 </div>
@@ -951,59 +1383,172 @@ useEffect(() => {
                 <div style={s.kpiValue}>{trades.length}</div>
               </div>
               <div style={s.kpiCard}>
-                <div style={s.kpiLabel}>Success Rate</div>
+                <div style={s.kpiLabel}>Win Rate</div>
                 <div style={s.kpiValue}>{successRate}%</div>
               </div>
               <div style={s.kpiCard}>
                 <div style={s.kpiLabel}>ROI</div>
-                <div style={s.kpiValue}>{roiPct}%</div>
+                <div style={{ ...s.kpiValue, color: roiPct >= 0 ? C.green : C.red }}>
+                  {roiPct >= 0 ? "+" : ""}{fmtPct(roiPct)}%
+                </div>
                 <div style={s.kpiFoot}>baseline ₹{fmtINR(roiBaseline)}</div>
               </div>
-            </div>
-
-            <div style={{ ...s.panel, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div>
-                <div style={s.panelIcon}>🧭</div>
-                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 13.5, fontWeight: 700, marginTop: 12, letterSpacing: "-0.01em" }}>ROI Baseline</div>
-                <p style={{ fontSize: 11.5, color: C.textFaint, marginTop: 5, lineHeight: 1.55, letterSpacing: "-0.005em" }}>
-                  Recalculate ROI against your current portfolio value.
-                </p>
+              <div style={s.kpiCard}>
+                <div style={s.kpiLabel}>Total Return %</div>
+                <div style={{ ...s.kpiValue, color: totalReturnPct >= 0 ? C.green : C.red }}>
+                  {totalReturnPct >= 0 ? "+" : "-"}{fmtPct(Math.abs(totalReturnPct))}%
+                </div>
+                <div style={s.kpiFoot}>sum of every trade's % return</div>
               </div>
-              <button style={{ ...s.btnGhost, width: "100%", marginTop: 14 }} onClick={setBaselineToCurrent}>
-                Set baseline = current
-              </button>
             </div>
           </div>
 
-          {/* ADD TRADE */}
+          {/* RECORD NEW TRADE */}
           <div style={{ ...s.panel, marginTop: 16 }}>
             <div style={s.panelHead}>
               <div style={s.panelTitleWrap}>
-                <div style={s.panelIcon}>➕</div>
+                <div style={s.panelIcon}><Icon name="plus" /></div>
                 <div>
-                  <h3 style={s.panelTitle}>Add a Trade</h3>
-                  <p style={s.panelSub}>Logged into the tamper-evident hash chain</p>
+                  <h3 style={s.panelTitle}>Record New Trade</h3>
+                  <p style={s.panelSub}>Profit is calculated automatically from stake and return % — logged into the tamper-evident chain</p>
                 </div>
               </div>
             </div>
-            <div style={s.row}>
-              <input
-                style={s.field}
-                type="number"
-                placeholder="Profit (+) or loss (−), e.g. 500 or -300"
-                value={profitLossInput}
-                onChange={(e) => setProfitLossInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddTrade()}
-              />
-              <input
-                style={{ ...s.field, flex: "2 1 260px" }}
-                type="text"
-                placeholder="Note — why you took this trade (optional)"
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddTrade()}
-              />
-              <button style={s.btnPrimary} onClick={handleAddTrade}>Add Trade</button>
+
+            <div style={s.formGrid}>
+              <div style={s.formGroup}>
+                <label style={s.formLabel}>Date</label>
+                <input
+                  style={s.formInput}
+                  type="date"
+                  max={todayISO()}
+                  value={tradeForm.date}
+                  onChange={(e) => setField("date", e.target.value)}
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.formLabel}>Bet Type</label>
+                {!showCustomBetInput ? (
+                  <select
+                    style={s.formSelect}
+                    value={tradeForm.betType}
+                    onChange={(e) => onBetTypeSelect(e.target.value)}
+                  >
+                    <option value="" disabled>Select a bet type</option>
+                    {betTypeOptions.map(function (b) {
+                      return <option key={b} value={b}>{b}</option>;
+                    })}
+                    <option value="__add_custom__">+ Add custom bet type</option>
+                  </select>
+                ) : (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      style={s.formInput}
+                      placeholder="e.g. Asian Handicap -1"
+                      value={newBetTypeInput}
+                      onChange={(e) => setNewBetTypeInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && confirmCustomBetType()}
+                      autoFocus
+                    />
+                    <button style={s.btnPrimary} onClick={confirmCustomBetType}>Add</button>
+                    <button style={s.btnGhost} onClick={() => { setShowCustomBetInput(false); setNewBetTypeInput(""); }}>Cancel</button>
+                  </div>
+                )}
+              </div>
+
+              <div style={{ ...s.formGroup, ...s.formFull }}>
+                <label style={s.formLabel}>League</label>
+                {!showCustomLeagueInput ? (
+                  <select
+                    style={s.formSelect}
+                    value={tradeForm.league}
+                    onChange={(e) => onLeagueSelect(e.target.value)}
+                  >
+                    <option value="" disabled>Select a league</option>
+                    {leagueOptions.map(function (l) {
+                      return <option key={l} value={l}>{l}</option>;
+                    })}
+                    <option value="__add_custom__">+ Add custom league</option>
+                  </select>
+                ) : (
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      style={s.formInput}
+                      placeholder="e.g. J1 League"
+                      value={newLeagueInput}
+                      onChange={(e) => setNewLeagueInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && confirmCustomLeague()}
+                      autoFocus
+                    />
+                    <button style={s.btnPrimary} onClick={confirmCustomLeague}>Add</button>
+                    <button style={s.btnGhost} onClick={() => { setShowCustomLeagueInput(false); setNewLeagueInput(""); }}>Cancel</button>
+                  </div>
+                )}
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.formLabel}>Stake (₹)</label>
+                <input
+                  style={s.formInput}
+                  type="number"
+                  placeholder="e.g. 1000"
+                  value={tradeForm.stake}
+                  onChange={(e) => setField("stake", e.target.value)}
+                />
+              </div>
+
+              <div style={s.formGroup}>
+                <label style={s.formLabel}>Return Amount (₹)</label>
+                <input
+                  style={s.formInput}
+                  type="number"
+                  placeholder="e.g. 525"
+                  value={tradeForm.returnAmount}
+                  onChange={(e) => setField("returnAmount", e.target.value)}
+                />
+              </div>
+
+              <div style={{ ...s.formGroup, ...s.formFull }}>
+                <label style={s.formLabel}>Outcome</label>
+                <div style={s.outcomeRow}>
+                  {OUTCOMES.map(function (o) {
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        style={s.outcomeBtn(tradeForm.outcome === o.value, o.value)}
+                        onClick={() => onOutcomeChange(o.value)}
+                      >
+                        <Icon name={o.icon} size={13} />{o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div style={{ ...s.formGroup, ...s.formFull }}>
+                <label style={s.formLabel}>Notes <span style={s.formHint}>(optional)</span></label>
+                <textarea
+                  style={s.formTextarea}
+                  placeholder="Why did you take this trade?"
+                  value={tradeForm.note}
+                  onChange={(e) => setField("note", e.target.value)}
+                />
+              </div>
+
+              <div style={{ ...s.formFull, ...s.profitPreview }}>
+                <span style={s.profitPreviewLabel}>Calculated profit</span>
+                <span style={s.profitPreviewValue(tradeProfitPreview)}>
+                  {tradeProfitPreview == null ? "—" : (tradeProfitPreview >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(tradeProfitPreview))}
+                </span>
+              </div>
+
+              <div style={s.formFull}>
+                <button style={{ ...s.btnPrimary, width: "100%", padding: "13px 15px", fontSize: 13.5, borderRadius: 10 }} onClick={handleAddTrade}>
+                  Save Trade
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1012,13 +1557,15 @@ useEffect(() => {
             <div style={s.panel}>
               <div style={s.panelHead}>
                 <div style={s.panelTitleWrap}>
-                  <div style={s.panelIcon}>📊</div>
+                  <div style={s.panelIcon}><Icon name="bars" /></div>
                   <div>
                     <h3 style={s.panelTitle}>Monthly Progress</h3>
                     <p style={s.panelSub}>P&amp;L broken down by month</p>
                   </div>
                 </div>
-                <button style={s.btnGhostSmall} onClick={exportMonthlyCSV}>⬇ CSV</button>
+                <button style={s.btnGhostSmall} onClick={exportMonthlyCSV}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Icon name="download" size={12} /> CSV</span>
+                </button>
               </div>
 
               <div style={{ overflowX: "auto" }}>
@@ -1060,7 +1607,7 @@ useEffect(() => {
             <div style={s.panel}>
               <div style={s.panelHead}>
                 <div style={s.panelTitleWrap}>
-                  <div style={s.panelIcon}>📜</div>
+                  <div style={s.panelIcon}><Icon name="list" /></div>
                   <div>
                     <h3 style={s.panelTitle}>Recent Trades</h3>
                     <p style={s.panelSub}>{trades.length} total, newest first</p>
@@ -1073,22 +1620,31 @@ useEffect(() => {
               ) : (
                 <div style={s.tradesScroll}>
                   {trades.map(function (t) {
+                    const outcomeKind = t.outcome || (t.profitLoss >= 0 ? "win" : "loss");
+                    const outcomeLabel = t.outcome ? t.outcome.toUpperCase() : (t.profitLoss >= 0 ? "WIN" : "LOSS");
+                    const outcomeIcon = outcomeKind === "win" ? "check" : outcomeKind === "loss" ? "x" : "circle";
                     return (
                       <div key={t.id} style={s.tradeItem}>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                           <div>
-                            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{"Trade #" + t.id}</strong>
+                            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{t.betType || "Trade #" + t.id}</strong>
                             <span style={{ color: C.textFaint, fontSize: 12 }}> • {t.date}</span>
-                            <span style={s.badge(t.profitLoss >= 0)}>
-                              {t.profitLoss >= 0 ? "WIN" : "LOSS"}
-                            </span>
+                            <span style={s.badge(outcomeKind)}><Icon name={outcomeIcon} size={9} />{outcomeLabel}</span>
                           </div>
+
+                          <div style={s.tradeMetaRow}>
+                            {t.league ? <span style={s.tradeChip}>{t.league}</span> : null}
+                            {t.returnPct != null ? <span style={s.tradeChip}>Return {t.returnPct >= 0 ? "+" : ""}{t.returnPct}%</span> : null}
+                            {t.stake != null ? <span style={s.tradeChip}>Stake ₹{fmtINR(t.stake)}</span> : null}
+                            {t.returnReceived != null ? <span style={s.tradeChip}>Received ₹{fmtINR(t.returnReceived)}</span> : null}
+                          </div>
+
                           {t.note ? <div style={s.note}>{t.note}</div> : null}
-                          <div style={{ color: C.textFaint, fontSize: 10.5, marginTop: 4, fontFamily: "monospace" }}>
+                          <div style={{ color: C.textFaint, fontSize: 10.5, marginTop: 6, fontFamily: "monospace" }}>
                             h:{t.hash ? t.hash.slice(-8) : ""} • prev:{t.prevHash ? t.prevHash.slice(-8) : ""}
                           </div>
                         </div>
-                        <div style={t.profitLoss >= 0 ? s.green : s.red}>
+                        <div style={t.profitLoss > 0 ? s.green : t.profitLoss < 0 ? s.red : s.amberText}>
                           {(t.profitLoss >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(t.profitLoss))}
                         </div>
                       </div>
@@ -1103,7 +1659,7 @@ useEffect(() => {
           <div style={{ ...s.panel, marginTop: 16 }}>
             <div style={s.panelHead}>
               <div style={s.panelTitleWrap}>
-                <div style={s.panelIcon}>📈</div>
+                <div style={s.panelIcon}><Icon name="trend" /></div>
                 <div>
                   <h3 style={s.panelTitle}>Trade P&amp;L — Bar Chart</h3>
                   <p style={s.panelSub}>Chronological, per trade</p>
