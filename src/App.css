@@ -1,3 +1,23 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* ---------- Global reset & base ---------- */
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #0b1220;
+  color: #e5e7eb;
+}
+
 .App {
   text-align: center;
 }
@@ -29,10 +49,155 @@
 }
 
 @keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Selection & focus ---------- */
+::selection {
+  background: rgba(56, 189, 248, 0.35);
+  color: #fff;
+}
+
+button:focus-visible,
+input:focus-visible,
+label:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.85);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- Buttons ---------- */
+button {
+  font-family: inherit;
+  transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  will-change: transform;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.96);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: grayscale(0.3);
+}
+
+/* ---------- Inputs ---------- */
+input {
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+input:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+input:focus {
+  border-color: rgba(56, 189, 248, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+  background-color: rgba(2, 6, 23, 0.85) !important;
+}
+
+input::placeholder {
+  color: #64748b;
+  opacity: 1;
+}
+
+/* Remove number input spinners for a cleaner, "trading terminal" look */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ---------- Numeric / monospace emphasis ----------
+   Targets values that read as currency/numbers inside cards, without
+   needing className changes — relies on element + content pattern. */
+table td, table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Tables ---------- */
+table {
+  font-family: inherit;
+}
+
+table tbody tr {
+  transition: background-color 0.15s ease;
+  border-radius: 8px;
+}
+
+table tbody tr:hover {
+  background-color: rgba(148, 163, 184, 0.06);
+}
+
+th {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-size: 11px !important;
+}
+
+/* ---------- Links ---------- */
+a {
+  color: #38bdf8;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a:hover {
+  color: #7dd3fc;
+}
+
+/* ---------- Scrollbars (Chrome/Edge/Safari) ---------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(2, 6, 23, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+  background-clip: content-box;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+/* ---------- Canvas (charts) crispness ---------- */
+canvas {
+  border-radius: 8px;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+/* ---------- File input label (Import JSON) hover affordance ---------- */
+label {
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+label:hover {
+  color: #e2e8f0 !important;
 }

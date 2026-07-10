@@ -495,7 +495,7 @@ useEffect(() => {
 
     if (monthly.length === 0) {
       ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px Arial";
+      ctx.font = "14px Inter, Arial";
       ctx.fillText("No data yet — add trades to see monthly progress.", 12, 24);
       return;
     }
@@ -529,7 +529,7 @@ useEffect(() => {
 
     // y grid & labels
     ctx.fillStyle = "#a3b2c7";
-    ctx.font = "12px Arial";
+    ctx.font = "12px Inter, Arial";
     const gridLines = 4;
     for (let i = 0; i <= gridLines; i++) {
       const ratio = i / gridLines;
@@ -565,7 +565,7 @@ useEffect(() => {
       }
 
       ctx.fillStyle = "#a3b2c7";
-      ctx.font = "11px Arial";
+      ctx.font = "11px Inter, Arial";
       ctx.fillText(m.month, x - 6, pad.t + plotH + 18);
     });
   };
@@ -602,7 +602,7 @@ useEffect(() => {
 
     if (barPoints.length === 0) {
       ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px Arial";
+      ctx.font = "14px Inter, Arial";
       ctx.fillText("No trades yet — add a trade to see the bar chart.", 12, 24);
       return;
     }
@@ -632,7 +632,7 @@ useEffect(() => {
     ctx.stroke();
 
     ctx.fillStyle = "#a3b2c7";
-    ctx.font = "12px Arial";
+    ctx.font = "12px Inter, Arial";
     const gridLines = 4;
     for (let i = 0; i <= gridLines; i++) {
       const ratio = i / gridLines;
@@ -668,7 +668,7 @@ useEffect(() => {
     });
 
     ctx.fillStyle = "#a3b2c7";
-    ctx.font = "11px Arial";
+    ctx.font = "11px Inter, Arial";
     const firstIdx = 0;
     const lastIdx = n - 1;
     const midIdx = Math.floor(lastIdx / 2);
@@ -685,62 +685,130 @@ useEffect(() => {
 
   useEffect(() => { drawTradeChart(); /* eslint-disable-next-line */ }, [barPoints]);
 
+  // ---------- design tokens ----------
+  const FONT_BODY = "'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif";
+  const FONT_DISPLAY = "'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif";
+  const NUM = { fontFamily: FONT_DISPLAY, fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum' 1, 'ss01' 1" };
+
+  const C = {
+    bg: "#07080c",
+    surface: "#0d0f14",
+    surfaceAlt: "#12141b",
+    sidebar: "#090a0f",
+    border: "rgba(255,255,255,0.06)",
+    borderStrong: "rgba(255,255,255,0.13)",
+    text: "#eceef2",
+    textDim: "#8b93a7",
+    textFaint: "#565f74",
+    accent: "#5b8def",
+    accentDim: "rgba(91,141,239,0.13)",
+    green: "#2ecc84",
+    greenDim: "rgba(46,204,132,0.11)",
+    red: "#f5586b",
+    redDim: "rgba(245,88,107,0.11)"
+  };
+
   // ---------- styles ----------
   const s = {
-    page: { minHeight: "100vh", background: "linear-gradient(180deg, #0f172a 0%, #0b1220 45%, #0b1327 100%)", color: "#e5e7eb", fontFamily: "Inter, system-ui, -apple-system, Arial", padding: 20 },
-    container: { maxWidth: 980, margin: "0 auto" },
-    header: { textAlign: "center", padding: "16px 14px", borderRadius: 12, background: "linear-gradient(90deg, rgba(25,118,210,0.25), rgba(66,165,245,0.25))", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(6px)", boxShadow: "0 10px 24px rgba(0,0,0,0.25)", marginBottom: 12 },
-    h1: { margin: 0, fontSize: 26, fontWeight: 700 },
-    sub: { margin: "6px 0 0 0", color: "#cbd5e1", fontSize: 13 },
+    shell: { minHeight: "100vh", background: C.bg, color: C.text, fontFamily: FONT_BODY, display: "flex", WebkitFontSmoothing: "antialiased" },
 
-    banner: { margin: "8px auto 0", maxWidth: 980, padding: "8px 12px", borderRadius: 10, textAlign: "center",
-      background: banner.type === "ok" ? "rgba(34,197,94,.15)" : "rgba(239,68,68,.15)",
-      border: "1px solid " + (banner.type === "ok" ? "rgba(34,197,94,.35)" : "rgba(239,68,68,.35)"),
-      color: banner.type === "ok" ? "#86efac" : "#fca5a5", fontWeight: 600, transition: "opacity .2s", opacity: banner.msg ? 1 : 0 },
+    // ---- sidebar ----
+    sidebar: { width: 240, flexShrink: 0, background: C.sidebar, borderRight: "1px solid " + C.border, display: "flex", flexDirection: "column", padding: "24px 14px", position: "sticky", top: 0, height: "100vh" },
 
-    cardRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginTop: 14, marginBottom: 10 },
-    card: { background: "rgba(15,23,42,0.55)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, boxShadow: "0 6px 16px rgba(0,0,0,0.25)", minHeight: 96 },
-    label: { color: "#a3b2c7", fontSize: 12, marginBottom: 6 },
-    value: { fontSize: 20, fontWeight: 700 },
+    sideSectionLabel: { fontSize: 10.5, fontWeight: 700, letterSpacing: "0.09em", color: C.textFaint, textTransform: "uppercase", margin: "22px 8px 8px" },
 
+    userCard: { padding: "13px 12px", borderRadius: 12, background: C.surfaceAlt, border: "1px solid " + C.border, display: "flex", alignItems: "center", gap: 10 },
+    userAvatar: { width: 34, height: 34, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12.5, flexShrink: 0, fontFamily: FONT_DISPLAY },
+    userName: { fontSize: 13.5, fontWeight: 700, letterSpacing: "-0.005em" },
+    userMeta: { fontSize: 11, color: C.textFaint, marginTop: 2 },
+
+    integrityRow: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 10, background: C.surfaceAlt, border: "1px solid " + C.border, fontSize: 11.5 },
+    dot: (ok) => ({ width: 6, height: 6, borderRadius: "50%", background: ok ? C.green : C.red, flexShrink: 0, boxShadow: "0 0 8px " + (ok ? C.green : C.red) }),
+
+    sideBtn: { display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid transparent", background: "transparent", color: C.textDim, cursor: "pointer", fontSize: 12.5, fontWeight: 500, textAlign: "left", fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
+    sideBtnDanger: { color: "#e58991" },
+
+    sideFooter: { marginTop: "auto", paddingTop: 16, borderTop: "1px solid " + C.border },
+
+    // ---- main ----
+    main: { flex: 1, minWidth: 0, padding: "26px 32px 64px" },
+    maxW: { maxWidth: 1260, margin: "0 auto" },
+
+    topBar: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 },
+    pageTitle: { fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", margin: 0 },
+    pageSub: { fontSize: 13, color: C.textFaint, margin: "5px 0 0", letterSpacing: "-0.005em" },
+
+    saveChip: { fontSize: 11.5, color: C.textFaint, background: C.surfaceAlt, border: "1px solid " + C.border, padding: "7px 13px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 7, fontWeight: 500 },
+
+    banner: (type) => ({ padding: "11px 15px", borderRadius: 10, textAlign: "center", fontSize: 13, fontWeight: 500,
+      background: type === "ok" ? C.greenDim : C.redDim,
+      border: "1px solid " + (type === "ok" ? "rgba(46,204,132,.3)" : "rgba(245,88,107,.3)"),
+      color: type === "ok" ? C.green : C.red, marginBottom: 18 }),
+
+    // hero + kpi
+    heroGrid: { display: "grid", gridTemplateColumns: "1.25fr 1fr 1fr", gap: 14, marginBottom: 14 },
+    hero: { background: "linear-gradient(160deg, rgba(91,141,239,0.12), rgba(13,15,20,0.3))", border: "1px solid " + C.border, borderRadius: 18, padding: "22px 22px 20px", display: "flex", flexDirection: "column", justifyContent: "space-between" },
+    heroLabel: { fontSize: 11.5, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.06em" },
+    heroValue: { ...NUM, fontSize: 36, fontWeight: 700, letterSpacing: "-0.03em", margin: "10px 0 16px", lineHeight: 1 },
+
+    kpiGrid: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 },
+    kpiCard: { background: C.surface, border: "1px solid " + C.border, borderRadius: 14, padding: "16px 17px", display: "flex", flexDirection: "column", justifyContent: "center" },
+    kpiLabel: { fontSize: 10.5, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" },
+    kpiValue: { ...NUM, fontSize: 22, fontWeight: 700, marginTop: 7, letterSpacing: "-0.02em", lineHeight: 1.1 },
+    kpiFoot: { fontSize: 11, color: C.textFaint, marginTop: 5, letterSpacing: "-0.005em" },
+
+    // generic panel
+    panel: { background: C.surface, border: "1px solid " + C.border, borderRadius: 16, padding: 20 },
+    panelHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 16 },
+    panelTitleWrap: { display: "flex", alignItems: "center", gap: 9 },
+    panelIcon: { width: 25, height: 25, borderRadius: 7, background: C.accentDim, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, flexShrink: 0 },
+    panelTitle: { fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: "-0.015em" },
+    panelSub: { fontSize: 11.5, color: C.textFaint, margin: "2px 0 0", letterSpacing: "-0.005em" },
+
+    // inputs / buttons
+    field: { flex: "1 1 200px", minWidth: 0, padding: "10px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em" },
     row: { display: "flex", gap: 8, flexWrap: "wrap" },
-    input: { flex: "1 1 220px", minWidth: 0, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(2,6,23,0.65)", color: "#e5e7eb", outline: "none", boxSizing: "border-box" },
-    btn: { flex: "0 1 160px", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(25,118,210,0.9), rgba(17,94,163,0.9))", color: "#fff", cursor: "pointer", fontWeight: 600, letterSpacing: 0.3, boxSizing: "border-box" },
-    btnGhost: { flex: "0 1 160px", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "transparent", color: "#cbd5e1", cursor: "pointer", fontWeight: 600, letterSpacing: 0.3, boxSizing: "border-box" },
+    btnPrimary: { padding: "9px 15px", borderRadius: 9, border: "1px solid rgba(91,141,239,0.5)", background: C.accent, color: "#07080c", cursor: "pointer", fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap", fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
+    btnGhost: { padding: "9px 14px", borderRadius: 9, border: "1px solid " + C.border, background: "transparent", color: C.textDim, cursor: "pointer", fontWeight: 500, fontSize: 12, whiteSpace: "nowrap", fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
+    btnGhostSmall: { padding: "6px 10px", borderRadius: 7, border: "1px solid " + C.border, background: "transparent", color: C.textDim, cursor: "pointer", fontWeight: 500, fontSize: 11, whiteSpace: "nowrap", fontFamily: FONT_BODY },
 
-    section: { background: "rgba(15,23,42,0.55)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, boxShadow: "0 6px 16px rgba(0,0,0,0.25)", marginTop: 10 },
-    sectionTitle: { margin: "0 0 10px 0", fontSize: 17 },
+    // workspace grid
+    workspace: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16, alignItems: "start" },
 
-    tradeItem: { padding: "10px 12px", borderRadius: 10, background: "rgba(2,6,23,0.45)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" },
-    note: { color: "#a3b2c7", fontSize: 12, marginTop: 6 },
-    badge: { fontSize: 12, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", marginLeft: 8 },
-    green: { color: "#22c55e", fontWeight: 700 },
-    red: { color: "#ef4444", fontWeight: 700 },
+    chartWrap: { width: "100%", borderRadius: 12, border: "1px solid " + C.border, background: "#05060a", padding: 8, marginTop: 14, overflowX: "auto" },
 
-    toolbar: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, marginBottom: 6, alignItems: "center" },
-    saveHint: { color: "#94a3b8", fontSize: 12 },
+    tradesScroll: { maxHeight: 380, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8 },
+    tradeItem: { padding: "12px 14px", borderRadius: 11, background: "#05060a", border: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" },
+    note: { color: C.textDim, fontSize: 12, marginTop: 5, letterSpacing: "-0.005em" },
+    badge: (win) => ({ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, marginLeft: 8, background: win ? C.greenDim : C.redDim, color: win ? C.green : C.red, letterSpacing: "0.04em" }),
+    green: { ...NUM, color: C.green, fontWeight: 700 },
+    red: { ...NUM, color: C.red, fontWeight: 700 },
 
-    chartWrap: { width: "100%", borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(2,6,23,0.45)", padding: 8, boxShadow: "0 6px 16px rgba(0,0,0,0.25)", marginTop: 10, overflowX: "auto" },
+    table: { width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontSize: 13 },
+    th: { padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.05em" },
+    td: { padding: "10px 10px", background: "#05060a", letterSpacing: "-0.005em" },
 
-    authWrap: { maxWidth: 420, margin: "10vh auto 0", padding: 16, borderRadius: 12, background: "rgba(15,23,42,0.55)", border: "1px solid rgba(255,255,255,0.08)", boxShadow: "0 10px 24px rgba(0,0,0,0.25)", textAlign: "center" },
-    authTitle: { margin: "0 0 6px 0", fontSize: 24, fontWeight: 700 },
-    authInput: { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(2,6,23,0.65)", color: "#e5e7eb", outline: "none", boxSizing: "border-box", marginTop: 8 },
-    authBtnRow: { display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }
+    // auth
+    authShell: { minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.text, fontFamily: FONT_BODY, WebkitFontSmoothing: "antialiased", padding: 24 },
+    authCard: { width: "100%", maxWidth: 360 },
+    authInput: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", boxSizing: "border-box", marginTop: 10, fontSize: 14, fontFamily: FONT_BODY, letterSpacing: "-0.005em" }
   };
+
+  const FontImport = () => (
+    <style>{"@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');"}</style>
+  );
 
   // ---------- AUTH SCREEN ----------
   if (!activeUser) {
     return (
-      <div style={s.page}>
-        <div style={s.authWrap}>
-          <div style={s.authTitle}>Trading Dashboard</div>
-          <div style={{ color: "#cbd5e1", marginBottom: 6 }}>Developed by Ansh Maheshwari</div>
-          {authBanner ? (
-            <div style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 10,
-              background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.35)", color: "#fca5a5", fontWeight: 600 }}>
-              {authBanner}
-            </div>
-          ) : null}
+      <div style={s.authShell}>
+        <FontImport />
+        <div style={s.authCard}>
+          <div style={{ fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 5 }}>Welcome back</div>
+          <div style={{ color: C.textFaint, fontSize: 13, marginBottom: 20, letterSpacing: "-0.005em" }}>Sign in to your encrypted journal</div>
+
+          {authBanner ? <div style={s.banner("err")}>{authBanner}</div> : null}
+
           <input
             style={s.authInput}
             placeholder="Username"
@@ -757,9 +825,9 @@ useEffect(() => {
               if (/^\d{0,4}$/.test(e.target.value)) setAuth({ ...auth, pin: e.target.value });
             }}
           />
-          <div style={s.authBtnRow}>
-            <button style={s.btn} onClick={onCreate}>Create Account</button>
-            <button style={s.btnGhost} onClick={onUnlock}>Unlock</button>
+          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+            <button style={{ ...s.btnPrimary, flex: 1, padding: "11px 15px", fontSize: 13 }} onClick={onCreate}>Create Account</button>
+            <button style={{ ...s.btnGhost, flex: 1, padding: "11px 15px", fontSize: 13 }} onClick={onUnlock}>Unlock</button>
           </div>
         </div>
       </div>
@@ -768,238 +836,287 @@ useEffect(() => {
 
   // ---------- MAIN APP ----------
   return (
-    <div style={s.page}>
-      <div style={s.container}>
-        <div style={s.header}>
-          <h1 style={s.h1}>Trading Dashboard</h1>
-          <p style={s.sub}>Developed by Ansh Maheshwari</p>
-          <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8" }}>
-            Logged in as <strong>{activeUser}</strong> • {lastSavedAt ? "Last saved " + lastSavedAt : "Saving…"} • Integrity:{" "}
-            <span style={{ color: chainOK ? "#86efac" : "#fca5a5", fontWeight: 700 }}>
-              {chainOK ? "OK" : "⚠ compromised"}
-            </span>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <button style={s.btnGhost} onClick={onLogout}>Logout / Switch user</button>
+    <div style={s.shell}>
+      <FontImport />
+
+      {/* SIDEBAR */}
+      <aside style={s.sidebar}>
+        <div style={s.sideSectionLabel}>Account</div>
+        <div style={s.userCard}>
+          <div style={s.userAvatar}>{activeUser.slice(0, 2).toUpperCase()}</div>
+          <div>
+            <div style={s.userName}>{activeUser}</div>
+            <div style={s.userMeta}>{lastSavedAt ? "Saved " + lastSavedAt : "Saving…"}</div>
           </div>
         </div>
 
-        {/* banner */}
-        <div style={s.banner}>{banner.msg}</div>
-
-        {/* KPIs */}
-        <div style={s.cardRow}>
-          <div style={s.card}>
-            <div style={s.label}>Portfolio Value</div>
-            <div style={s.value}>₹ {fmtINR(portfolioValue)}</div>
-            <div style={{ ...s.row, marginTop: 10 }}>
-              <input
-                style={s.input}
-                type="number"
-                placeholder="Set portfolio value"
-                value={portfolioInput}
-                onChange={(e) => setPortfolioInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handlePortfolioUpdate()}
-              />
-              <button style={s.btn} onClick={handlePortfolioUpdate}>Update</button>
-            </div>
-          </div>
-
-          <div style={s.card}>
-            <div style={s.label}>Total Profit</div>
-            <div style={{ ...s.value, color: totalProfit >= 0 ? s.green.color : s.red.color }}>
-              ₹ {fmtINR(totalProfit)}
-            </div>
-          </div>
-
-          <div style={s.card}>
-            <div style={s.label}>Total Trades</div>
-            <div style={s.value}>{trades.length}</div>
-          </div>
-
-          <div style={s.card}>
-            <div style={s.label}>Success Rate</div>
-            <div style={s.value}>{successRate}%</div>
-          </div>
-
-          <div style={s.card}>
-            <div style={s.label}>ROI</div>
-            <div style={s.value}>
-              {roiPct}% <span style={{ fontSize: 12, color: "#a3b2c7" }}>(baseline: ₹ {fmtINR(roiBaseline)})</span>
-            </div>
-            <div style={{ ...s.row, marginTop: 10 }}>
-              <button style={s.btnGhost} onClick={setBaselineToCurrent}>🧭 Set ROI baseline = current</button>
-            </div>
-          </div>
+        <div style={s.integrityRow}>
+          <span style={s.dot(chainOK)} />
+          <span style={{ color: chainOK ? C.green : C.red, fontWeight: 600 }}>
+            {chainOK ? "Chain verified" : "Chain compromised"}
+          </span>
         </div>
 
-        {/* toolbar */}
-       {/* toolbar */}
-<div style={s.toolbar}>
-  <button
-    style={s.btnGhost}
-    onClick={undoLastTrade}
-    disabled={trades.length === 0}
-  >
-    ⏪ Undo last
-  </button>
-
-  {!confirmClear ? (
-    <button
-      style={s.btnGhost}
-      onClick={() => setConfirmClear(true)}
-      disabled={trades.length === 0}
-    >
-      🧹 Clear all
-    </button>
-  ) : (
-    <>
-      <span>Confirm clear?</span>
-      <button
-        style={s.btn}
-        onClick={clearAll}               // ✅ this triggers the wipe
-      >
-        Yes
-      </button>
-      <button
-        style={s.btnGhost}
-        onClick={() => setConfirmClear(false)}
-      >
-        No
-      </button>
-    </>
-  )}
-
-  <button style={s.btnGhost} onClick={exportJSON}>⬇ Export JSON</button>
-  <label style={{ display: "inline-block", color: "#cbd5e1" }}>
-    ⬆ Import JSON
-    <input
-      type="file"
-      accept="application/json"
-      style={{ display: "none" }}
-      onChange={(e) => importJSON(e.target.files && e.target.files[0])}
-    />
-  </label>
-
-  <button
-    style={s.btnGhost}
-    onClick={async () => {
-      const ok = await doEncryptedSave();
-      flash(ok ? "ok" : "err", ok ? "Saved" : "Save failed");
-    }}
-  >
-    💾 Save now
-  </button>
-</div>
-
-       {/* ADD TRADE */}
-        <div style={s.section}>
-          <h3 style={s.sectionTitle}>Add a Trade</h3>
-          <div style={{ ...s.row, marginBottom: 10 }}>
-            <input
-              style={s.input}
-              type="number"
-              placeholder="Profit (+) or Loss (-) e.g. 500 or -300"
-              value={profitLossInput}
-              onChange={(e) => setProfitLossInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddTrade()}
-            />
-            <button style={s.btn} onClick={handleAddTrade}>Add Trade</button>
-          </div>
+        <div style={s.sideSectionLabel}>Data</div>
+        <button style={s.sideBtn} onClick={undoLastTrade} disabled={trades.length === 0}>
+          ⏪ Undo last trade
+        </button>
+        <button style={s.sideBtn} onClick={exportJSON}>⬇ Export JSON</button>
+        <label style={s.sideBtn}>
+          ⬆ Import JSON
           <input
-            style={s.input}
-            type="text"
-            placeholder="(Optional) Note — why you took this trade"
-            value={noteInput}
-            onChange={(e) => setNoteInput(e.target.value)}
+            type="file"
+            accept="application/json"
+            style={{ display: "none" }}
+            onChange={(e) => importJSON(e.target.files && e.target.files[0])}
           />
+        </label>
+        <button
+          style={s.sideBtn}
+          onClick={async () => {
+            const ok = await doEncryptedSave();
+            flash(ok ? "ok" : "err", ok ? "Saved" : "Save failed");
+          }}
+        >
+          💾 Save now
+        </button>
+
+        {!confirmClear ? (
+          <button style={{ ...s.sideBtn, ...s.sideBtnDanger }} onClick={() => setConfirmClear(true)} disabled={trades.length === 0}>
+            🧹 Clear all trades
+          </button>
+        ) : (
+          <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+            <span style={{ fontSize: 11.5, color: C.textDim }}>Clear all trades?</span>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button style={{ ...s.btnGhostSmall, color: C.red, borderColor: "rgba(245,88,107,.4)" }} onClick={clearAll}>Yes, clear</button>
+              <button style={s.btnGhostSmall} onClick={() => setConfirmClear(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        <div style={s.sideFooter}>
+          <button style={{ ...s.sideBtn, ...s.sideBtnDanger }} onClick={onLogout}>
+            ⏻ Logout / Switch user
+          </button>
         </div>
-      
-      
-        {/* MONTHLY PROGRESS */}
-        <div style={s.section}>
-          <h3 style={s.sectionTitle}>Monthly Progress</h3>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 6px" }}>
-              <thead>
-                <tr style={{ textAlign: "left", color: "#a3b2c7" }}>
-                  <th style={{ padding: "6px 8px" }}>Month</th>
-                  <th style={{ padding: "6px 8px" }}>Trades</th>
-                  <th style={{ padding: "6px 8px" }}>Win%</th>
-                  <th style={{ padding: "6px 8px" }}>P&L (₹)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {monthly.length === 0 ? (
-                  <tr><td style={{ padding: "8px 8px", color: "#a3b2c7" }} colSpan={4}>No data yet</td></tr>
-                ) : (
-                  monthly.map(function (m) {
-                    return (
-                      <tr key={m.month}>
-                        <td style={{ padding: "8px 8px" }}>{m.month}</td>
-                        <td style={{ padding: "8px 8px" }}>{m.trades}</td>
-                        <td style={{ padding: "8px 8px" }}>{m.winPct}%</td>
-                        <td style={{ padding: "8px 8px", color: m.pnl >= 0 ? s.green.color : s.red.color, fontWeight: 700 }}>
-                          {(m.pnl >= 0 ? "+" : "-") + "₹ " + fmtINR(Math.abs(m.pnl))}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+      </aside>
+
+      {/* MAIN */}
+      <main style={s.main}>
+        <div style={s.maxW}>
+
+          <div style={s.topBar}>
+            <div>
+              <h1 style={s.pageTitle}>Dashboard</h1>
+              <p style={s.pageSub}>Live overview of your portfolio &amp; trading performance</p>
+            </div>
+            <div style={s.saveChip}>
+              <span style={s.dot(chainOK)} />
+              {lastSavedAt ? "Last saved " + lastSavedAt : "Saving…"}
+            </div>
           </div>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button style={s.btnGhost} onClick={exportMonthlyCSV}>⬇ Export Monthly CSV</button>
+          {banner.msg ? <div style={s.banner(banner.type)}>{banner.msg}</div> : null}
+
+          {/* HERO + KPI ROW */}
+          <div style={s.heroGrid}>
+            <div style={s.hero}>
+              <div>
+                <div style={s.heroLabel}>Portfolio Value</div>
+                <div style={s.heroValue}>₹{fmtINR(portfolioValue)}</div>
+              </div>
+              <div style={s.row}>
+                <input
+                  style={s.field}
+                  type="number"
+                  placeholder="Set portfolio value"
+                  value={portfolioInput}
+                  onChange={(e) => setPortfolioInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handlePortfolioUpdate()}
+                />
+                <button style={s.btnPrimary} onClick={handlePortfolioUpdate}>Update</button>
+              </div>
+            </div>
+
+            <div style={s.kpiGrid}>
+              <div style={s.kpiCard}>
+                <div style={s.kpiLabel}>Total Profit</div>
+                <div style={{ ...s.kpiValue, color: totalProfit >= 0 ? C.green : C.red }}>
+                  ₹{fmtINR(totalProfit)}
+                </div>
+              </div>
+              <div style={s.kpiCard}>
+                <div style={s.kpiLabel}>Total Trades</div>
+                <div style={s.kpiValue}>{trades.length}</div>
+              </div>
+              <div style={s.kpiCard}>
+                <div style={s.kpiLabel}>Success Rate</div>
+                <div style={s.kpiValue}>{successRate}%</div>
+              </div>
+              <div style={s.kpiCard}>
+                <div style={s.kpiLabel}>ROI</div>
+                <div style={s.kpiValue}>{roiPct}%</div>
+                <div style={s.kpiFoot}>baseline ₹{fmtINR(roiBaseline)}</div>
+              </div>
+            </div>
+
+            <div style={{ ...s.panel, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <div style={s.panelIcon}>🧭</div>
+                <div style={{ fontFamily: FONT_DISPLAY, fontSize: 13.5, fontWeight: 700, marginTop: 12, letterSpacing: "-0.01em" }}>ROI Baseline</div>
+                <p style={{ fontSize: 11.5, color: C.textFaint, marginTop: 5, lineHeight: 1.55, letterSpacing: "-0.005em" }}>
+                  Recalculate ROI against your current portfolio value.
+                </p>
+              </div>
+              <button style={{ ...s.btnGhost, width: "100%", marginTop: 14 }} onClick={setBaselineToCurrent}>
+                Set baseline = current
+              </button>
+            </div>
           </div>
 
-          <div ref={monthChartWrapRef} style={s.chartWrap}>
-            <canvas ref={monthCanvasRef} />
+          {/* ADD TRADE */}
+          <div style={{ ...s.panel, marginTop: 16 }}>
+            <div style={s.panelHead}>
+              <div style={s.panelTitleWrap}>
+                <div style={s.panelIcon}>➕</div>
+                <div>
+                  <h3 style={s.panelTitle}>Add a Trade</h3>
+                  <p style={s.panelSub}>Logged into the tamper-evident hash chain</p>
+                </div>
+              </div>
+            </div>
+            <div style={s.row}>
+              <input
+                style={s.field}
+                type="number"
+                placeholder="Profit (+) or loss (−), e.g. 500 or -300"
+                value={profitLossInput}
+                onChange={(e) => setProfitLossInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddTrade()}
+              />
+              <input
+                style={{ ...s.field, flex: "2 1 260px" }}
+                type="text"
+                placeholder="Note — why you took this trade (optional)"
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddTrade()}
+              />
+              <button style={s.btnPrimary} onClick={handleAddTrade}>Add Trade</button>
+            </div>
           </div>
-        </div>
 
-       
-
-        {/* RECENT TRADES */}
-        <div style={s.section}>
-          <h3 style={s.sectionTitle}>Recent Trades</h3>
-          {trades.length === 0 ? (
-            <div style={{ color: "#a3b2c7" }}>No trades yet</div>
-          ) : (
-            trades.map(function (t) {
-              return (
-                <div key={t.id} style={s.tradeItem}>
+          {/* WORKSPACE: Monthly Progress + Recent Trades */}
+          <div style={s.workspace}>
+            <div style={s.panel}>
+              <div style={s.panelHead}>
+                <div style={s.panelTitleWrap}>
+                  <div style={s.panelIcon}>📊</div>
                   <div>
-                    <div>
-                      <strong>{"Trade #" + t.id}</strong> • {t.date}
-                      <span style={{ ...s.badge, marginLeft: 8, color: t.profitLoss >= 0 ? s.green.color : s.red.color }}>
-                        {t.profitLoss >= 0 ? "WIN" : "LOSS"}
-                      </span>
-                    </div>
-                    {t.note ? <div style={s.note}>{t.note}</div> : null}
-                    {/* small hash preview (last 8 chars) */}
-                    <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 4 }}>
-                      h:{t.hash ? t.hash.slice(-8) : ""} • prev:{t.prevHash ? t.prevHash.slice(-8) : ""}
-                    </div>
-                  </div>
-                  <div style={t.profitLoss >= 0 ? s.green : s.red}>
-                    {(t.profitLoss >= 0 ? "+" : "-") + "₹ " + fmtINR(Math.abs(t.profitLoss))}
+                    <h3 style={s.panelTitle}>Monthly Progress</h3>
+                    <p style={s.panelSub}>P&amp;L broken down by month</p>
                   </div>
                 </div>
-              );
-            })
-          )}
-        </div>
+                <button style={s.btnGhostSmall} onClick={exportMonthlyCSV}>⬇ CSV</button>
+              </div>
 
-        {/* PER-TRADE BAR CHART */}
-        <div style={s.section}>
-          <h3 style={s.sectionTitle}>Trade P&L — Bar Chart</h3>
-          <div ref={tradeChartWrapRef} style={s.chartWrap}>
-            <canvas ref={tradeCanvasRef} />
+              <div style={{ overflowX: "auto" }}>
+                <table style={s.table}>
+                  <thead>
+                    <tr>
+                      <th style={s.th}>Month</th>
+                      <th style={s.th}>Trades</th>
+                      <th style={s.th}>Win%</th>
+                      <th style={s.th}>P&amp;L (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthly.length === 0 ? (
+                      <tr><td style={{ ...s.td, color: C.textFaint }} colSpan={4}>No data yet</td></tr>
+                    ) : (
+                      monthly.map(function (m) {
+                        return (
+                          <tr key={m.month}>
+                            <td style={s.td}>{m.month}</td>
+                            <td style={{ ...s.td, ...NUM }}>{m.trades}</td>
+                            <td style={{ ...s.td, ...NUM }}>{m.winPct}%</td>
+                            <td style={{ ...s.td, ...NUM, color: m.pnl >= 0 ? C.green : C.red, fontWeight: 700 }}>
+                              {(m.pnl >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(m.pnl))}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div ref={monthChartWrapRef} style={s.chartWrap}>
+                <canvas ref={monthCanvasRef} />
+              </div>
+            </div>
+
+            <div style={s.panel}>
+              <div style={s.panelHead}>
+                <div style={s.panelTitleWrap}>
+                  <div style={s.panelIcon}>📜</div>
+                  <div>
+                    <h3 style={s.panelTitle}>Recent Trades</h3>
+                    <p style={s.panelSub}>{trades.length} total, newest first</p>
+                  </div>
+                </div>
+              </div>
+
+              {trades.length === 0 ? (
+                <div style={{ color: C.textFaint, fontSize: 13, padding: "22px 0", textAlign: "center" }}>No trades yet</div>
+              ) : (
+                <div style={s.tradesScroll}>
+                  {trades.map(function (t) {
+                    return (
+                      <div key={t.id} style={s.tradeItem}>
+                        <div>
+                          <div>
+                            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{"Trade #" + t.id}</strong>
+                            <span style={{ color: C.textFaint, fontSize: 12 }}> • {t.date}</span>
+                            <span style={s.badge(t.profitLoss >= 0)}>
+                              {t.profitLoss >= 0 ? "WIN" : "LOSS"}
+                            </span>
+                          </div>
+                          {t.note ? <div style={s.note}>{t.note}</div> : null}
+                          <div style={{ color: C.textFaint, fontSize: 10.5, marginTop: 4, fontFamily: "monospace" }}>
+                            h:{t.hash ? t.hash.slice(-8) : ""} • prev:{t.prevHash ? t.prevHash.slice(-8) : ""}
+                          </div>
+                        </div>
+                        <div style={t.profitLoss >= 0 ? s.green : s.red}>
+                          {(t.profitLoss >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(t.profitLoss))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* PER-TRADE BAR CHART */}
+          <div style={{ ...s.panel, marginTop: 16 }}>
+            <div style={s.panelHead}>
+              <div style={s.panelTitleWrap}>
+                <div style={s.panelIcon}>📈</div>
+                <div>
+                  <h3 style={s.panelTitle}>Trade P&amp;L — Bar Chart</h3>
+                  <p style={s.panelSub}>Chronological, per trade</p>
+                </div>
+              </div>
+            </div>
+            <div ref={tradeChartWrapRef} style={s.chartWrap}>
+              <canvas ref={tradeCanvasRef} />
+            </div>
+          </div>
+
         </div>
-      </div>
+      </main>
     </div>
   );
 }
