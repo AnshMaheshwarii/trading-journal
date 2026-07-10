@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 
 /**
  * Security model
@@ -16,6 +16,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  */
 
 const ACCOUNTS_KEY = "TDASH_ACCOUNTS_V1";
+const LOCK_MS = 2 * 60 * 1000;
 
 const DEFAULT_BET_TYPES = ["Draw Cover"];
 
@@ -493,12 +494,19 @@ export default function App() {
     }
   };
 
-  const onLogout = () => {
+  const onLogout = useCallback(() => {
     setActiveUser("");
     setCryptoKey(null);
     setAuth(function (a) { return { ...a, pin: "" }; });
     setAuthBanner("");
-  };
+  }, []);
+
+  // -------- UI helpers / actions --------
+  const flash = useCallback((type, msg) => {
+    setBanner({ type, msg });
+    window.clearTimeout((flash)._t);
+    (flash)._t = window.setTimeout(function () { setBanner({ type: "", msg: "" }); }, 1600);
+  }, []);
 
   // -------- SAVE (encrypted per user) --------
   const doEncryptedSave = async () => {
@@ -551,18 +559,17 @@ useEffect(() => {
 }, [trades, portfolioValue, totalProfit, customBetTypes, customLeagues, roiBaseline, activeUser, cryptoKey]);
 
   // -------- activity / auto-lock (2 minutes) --------
-  const LOCK_MS = 2 * 60 * 1000;
   const activityRef = useRef(0);
   const timerRef = useRef(0);
 
-  function resetLockTimer() {
+  const resetLockTimer = useCallback(() => {
     if (!activeUser) return;
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(function () {
       onLogout();
       flash("err", "Auto-locked due to inactivity");
     }, LOCK_MS);
-  }
+  }, [activeUser, onLogout, flash]);
 
   useEffect(() => {
     if (!activeUser) return;
@@ -583,14 +590,7 @@ useEffect(() => {
       document.removeEventListener("visibilitychange", vis);
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [activeUser]);
-
-  // -------- UI helpers / actions --------
-  const flash = (type, msg) => {
-    setBanner({ type, msg });
-    window.clearTimeout((flash)._t);
-    (flash)._t = window.setTimeout(function () { setBanner({ type: "", msg: "" }); }, 1600);
-  };
+  }, [activeUser, resetLockTimer]);
 
   const handlePortfolioUpdate = () => {
     const v = parseFloat(portfolioInput);
@@ -811,7 +811,7 @@ useEffect(() => {
   const monthChartWrapRef = useRef(null);
   const monthCanvasRef = useRef(null);
 
-  const drawMonthlyChart = () => {
+  const drawMonthlyChart = useCallback(() => {
     const wrap = monthChartWrapRef.current;
     const canvas = monthCanvasRef.current;
     if (!wrap || !canvas) return;
@@ -905,9 +905,9 @@ useEffect(() => {
       ctx.font = "11px Inter, Arial";
       ctx.fillText(m.month, x - 6, pad.t + plotH + 18);
     });
-  };
+  }, [monthly]);
 
-  useEffect(() => { drawMonthlyChart(); /* eslint-disable-next-line */ }, [monthly]);
+  useEffect(() => { drawMonthlyChart(); }, [drawMonthlyChart]);
 
   // ---------- Per-trade bar chart ----------
   const tradeChartWrapRef = useRef(null);
@@ -918,7 +918,7 @@ useEffect(() => {
     return chrono.map(function (t, idx) { return { idx: idx, date: t.date, pnl: t.profitLoss }; });
   }, [trades]);
 
-  const drawTradeChart = () => {
+  const drawTradeChart = useCallback(() => {
     const wrap = tradeChartWrapRef.current;
     const canvas = tradeCanvasRef.current;
     if (!wrap || !canvas) return;
@@ -1018,9 +1018,9 @@ useEffect(() => {
     labelAt(firstIdx, barPoints[firstIdx].date);
     labelAt(midIdx, barPoints[midIdx].date);
     labelAt(lastIdx, barPoints[lastIdx].date);
-  };
+  }, [barPoints]);
 
-  useEffect(() => { drawTradeChart(); /* eslint-disable-next-line */ }, [barPoints]);
+  useEffect(() => { drawTradeChart(); }, [drawTradeChart]);
 
   // ---------- design tokens ----------
   const FONT_BODY = "'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif";
