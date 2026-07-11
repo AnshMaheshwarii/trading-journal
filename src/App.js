@@ -13,6 +13,14 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
  * - Bet types trimmed to a single seed ("Draw Cover") + user-defined custom types
  * - Leagues are now a rich, searchable-by-scroll dropdown with custom entries
  * - Total Return % (sum of every trade's % return) replaces baseline ROI
+ *
+ * Phase 5.1
+ * - Analytics replaced with system-level insights (no averages)
+ * - ROI baseline can be reset on demand
+ * - Recent Trades repositioned into the main dashboard flow
+ * - Helper text typography strengthened throughout
+ * - Professional footer with auto year
+ * - Mobile responsiveness hardened
  */
 
 const ACCOUNTS_KEY = "TDASH_ACCOUNTS_V1";
@@ -23,22 +31,14 @@ const DEFAULT_BET_TYPES = ["Draw Cover"];
 const DEFAULT_LEAGUES = [
   "Premier League",
   "La Liga",
+  "Fifa World Cup",
+   "NBA",
+  "WNBA",
   "Bundesliga",
   "Serie A",
   "Ligue 1",
   "Champions League",
   "Europa League",
-  "Conference League",
-  "World Cup",
-  "Euro",
-  "Copa America",
-  "Nations League",
-  "MLS",
-  "Saudi Pro League",
-  "Indian Super League",
-  "NBA",
-  "WNBA",
-  "EuroLeague Basketball",
   "NCAA Basketball"
 ];
 
@@ -348,12 +348,116 @@ function Icon({ name, size = 15, style }) {
           <path d="M12 3.8l6.5 2.4v5.4c0 4.3-2.8 7.4-6.5 8.6-3.7-1.2-6.5-4.3-6.5-8.6V6.2L12 3.8z" />
         </svg>
       );
+    case "pie":
+      return (
+        <svg {...common}>
+          <path d="M12 3.8v8.2h8.2A8.2 8.2 0 1 1 12 3.8z" />
+          <path d="M14.5 3.9A8.2 8.2 0 0 1 20.1 9.6H14.5V3.9z" />
+        </svg>
+      );
+    case "target":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.2" />
+          <circle cx="12" cy="12" r="4.2" />
+          <circle cx="12" cy="12" r="0.6" fill="currentColor" />
+        </svg>
+      );
+    case "wallet":
+      return (
+        <svg {...common}>
+          <path d="M4.5 7.2h13a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z" />
+          <path d="M4.5 7.2l2.2-3.1h9.6" />
+          <path d="M16.2 13.2h2.5" />
+        </svg>
+      );
+    case "scale":
+      return (
+        <svg {...common}>
+          <path d="M12 3.5v17" />
+          <path d="M6.5 6.5h11" />
+          <path d="M6.5 6.5L3.5 12.5a3 3 0 0 0 6 0L6.5 6.5z" />
+          <path d="M17.5 6.5l-3 6a3 3 0 0 0 6 0l-3-6z" />
+        </svg>
+      );
+    case "flag":
+      return (
+        <svg {...common}>
+          <path d="M6 21V4" />
+          <path d="M6 4.5h11l-2.6 3.6L17 11.7H6" />
+        </svg>
+      );
     default:
       return null;
   }
 }
 
-// ============== APP ==============
+// A small palette for categorical chart slices — separate from the app's
+// semantic colors (green/red/amber stay reserved for win/loss/void).
+const CHART_PALETTE = ["#5b8def", "#7c6ff0", "#3fb6c9", "#2ecc84", "#e8a94c", "#f5586b", "#c084fc", "#4dd0e1", "#f0a3d0", "#8bd17c"];
+
+function polarPoint(cx, cy, r, angleDeg) {
+  const rad = ((angleDeg - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+// Minimal, dependency-free SVG pie/donut chart with a side legend.
+function PieChart({ data, size = 148, textColor, faintColor, borderColor }) {
+  const total = data.reduce(function (sum, d) { return sum + d.value; }, 0);
+  const cx = size / 2;
+  const cy = size / 2;
+  const r = size / 2 - 4;
+
+  let cursor = 0;
+  const slices = total > 0 ? data.filter(function (d) { return d.value > 0; }).map(function (d, i) {
+    const frac = d.value / total;
+    const startAngle = cursor * 360;
+    const endAngle = (cursor + frac) * 360;
+    cursor += frac;
+    const start = polarPoint(cx, cy, r, startAngle);
+    const end = polarPoint(cx, cy, r, endAngle);
+    const largeArc = endAngle - startAngle > 180 ? 1 : 0;
+    const isFullCircle = frac >= 0.999;
+    const path = isFullCircle
+      ? "M " + cx + " " + (cy - r) + " A " + r + " " + r + " 0 1 1 " + (cx - 0.01) + " " + (cy - r) + " Z"
+      : "M " + cx + " " + cy + " L " + start.x + " " + start.y + " A " + r + " " + r + " 0 " + largeArc + " 1 " + end.x + " " + end.y + " Z";
+    return { key: d.label + i, path: path, color: CHART_PALETTE[i % CHART_PALETTE.length], pct: Math.round(frac * 1000) / 10, label: d.label, value: d.value };
+  }) : [];
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+      <svg viewBox={"0 0 " + size + " " + size} width={size} height={size} style={{ flexShrink: 0 }}>
+        {slices.length === 0 ? (
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={borderColor} strokeWidth="1.5" strokeDasharray="4 5" />
+        ) : (
+          slices.map(function (s) {
+            return <path key={s.key} d={s.path} fill={s.color} stroke="#05060a" strokeWidth="1.5" />;
+          })
+        )}
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 7, minWidth: 0, flex: "1 1 140px" }}>
+        {slices.length === 0 ? (
+          <span style={{ fontSize: 12, color: faintColor }}>No data yet</span>
+        ) : (
+          slices
+            .slice()
+            .sort(function (a, b) { return b.value - a.value; })
+            .map(function (s) {
+              return (
+                <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, minWidth: 0 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                  <span style={{ color: textColor, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: "1 1 auto", minWidth: 0 }}>{s.label}</span>
+                  <span style={{ color: faintColor, flexShrink: 0 }}>{s.pct}%</span>
+                </div>
+              );
+            })
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
   // -------- AUTH --------
   const [auth, setAuth] = useState({ username: "", pin: "" });
@@ -604,6 +708,11 @@ useEffect(() => {
     flash("ok", "Portfolio updated");
   };
 
+  const handleSetRoiBaseline = () => {
+    setRoiBaseline(Number(portfolioValue.toFixed(2)));
+    flash("ok", "ROI baseline reset to current portfolio value");
+  };
+
   // -------- trade form field updates --------
   const setField = (key, value) => {
     setTradeForm(function (f) { return { ...f, [key]: value }; });
@@ -781,22 +890,31 @@ useEffect(() => {
     const map = new Map();
     trades.forEach(function (t) {
       const key = (t.date || "").slice(0, 7) || "Unknown";
-      if (!map.has(key)) map.set(key, { pnl: 0, count: 0, wins: 0 });
+      if (!map.has(key)) map.set(key, { pnl: 0, count: 0, wins: 0, pctSum: 0 });
       const m = map.get(key);
       m.pnl += t.profitLoss;
       m.count += 1;
       if (t.profitLoss > 0) m.wins += 1;
+      const p = typeof t.returnPct === "number" ? t.returnPct : parseFloat(t.returnPct);
+      m.pctSum += Number.isNaN(p) ? 0 : p;
     });
     const arr = Array.from(map.entries()).map(function (pair) {
       const month = pair[0]; const v = pair[1];
-      return { month: month, pnl: Number(v.pnl.toFixed(2)), trades: v.count, winPct: v.count ? Math.round((v.wins / v.count) * 100) : 0 };
+      return {
+        month: month,
+        pnl: Number(v.pnl.toFixed(2)),
+        trades: v.count,
+        winPct: v.count ? Math.round((v.wins / v.count) * 100) : 0,
+        returnPct: Number(v.pctSum.toFixed(2)),
+        avgReturnPct: v.count ? Number((v.pctSum / v.count).toFixed(2)) : 0
+      };
     }).sort(function (a, b) { return a.month > b.month ? 1 : -1; });
     return arr;
   }, [trades]);
 
   const exportMonthlyCSV = () => {
-    const header = "Month,Trades,Win%,P&L (INR)\n";
-    const rows = monthly.map(function (m) { return [m.month, m.trades, m.winPct, m.pnl].join(","); });
+    const header = "Month,Trades,Win%,Return%,Avg Return%,P&L (INR)\n";
+    const rows = monthly.map(function (m) { return [m.month, m.trades, m.winPct, m.returnPct, m.avgReturnPct, m.pnl].join(","); });
     const csv = header + rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -909,118 +1027,136 @@ useEffect(() => {
 
   useEffect(() => { drawMonthlyChart(); }, [drawMonthlyChart]);
 
-  // ---------- Per-trade bar chart ----------
-  const tradeChartWrapRef = useRef(null);
-  const tradeCanvasRef = useRef(null);
-  const barPoints = useMemo(() => {
-    if (trades.length === 0) return [];
-    const chrono = [...trades].reverse();
-    return chrono.map(function (t, idx) { return { idx: idx, date: t.date, pnl: t.profitLoss }; });
+  useEffect(() => {
+    const handleResize = function () { drawMonthlyChart(); };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [drawMonthlyChart]);
+
+  // ---------- ANALYTICS: bet type & league distribution ----------
+  const betTypeDistribution = useMemo(() => {
+    const map = new Map();
+    trades.forEach(function (t) {
+      const key = t.betType || "Unspecified";
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(function (pair) { return { label: pair[0], value: pair[1] }; })
+      .sort(function (a, b) { return b.value - a.value; });
   }, [trades]);
 
-  const drawTradeChart = useCallback(() => {
-    const wrap = tradeChartWrapRef.current;
-    const canvas = tradeCanvasRef.current;
-    if (!wrap || !canvas) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const width = wrap.clientWidth;
-    const height = Math.max(240, Math.floor(width * 0.5));
-    canvas.style.width = width + "px";
-    canvas.style.height = height + "px";
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    ctx.fillStyle = "rgba(2,6,23,0.65)";
-    ctx.fillRect(0, 0, width, height);
-
-    if (barPoints.length === 0) {
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px Inter, Arial";
-      ctx.fillText("No trades yet — add a trade to see the bar chart.", 12, 24);
-      return;
-    }
-
-    const pad = { l: 44, r: 18, t: 16, b: 36 };
-    const plotW = width - pad.l - pad.r;
-    const plotH = height - pad.t - pad.b;
-
-    const minY = Math.min(0, Math.min.apply(null, barPoints.map(function (p) { return p.pnl; })));
-    const maxY = Math.max(0, Math.max.apply(null, barPoints.map(function (p) { return p.pnl; })));
-    const yRange = maxY - minY || 1;
-    const yFor = function (val) { return pad.t + plotH - ((val - minY) / yRange) * plotH; };
-
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad.l, pad.t);
-    ctx.lineTo(pad.l, pad.t + plotH);
-    ctx.lineTo(pad.l + plotW, pad.t + plotH);
-    ctx.stroke();
-
-    const y0 = yFor(0);
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
-    ctx.beginPath();
-    ctx.moveTo(pad.l, y0);
-    ctx.lineTo(pad.l + plotW, y0);
-    ctx.stroke();
-
-    ctx.fillStyle = "#a3b2c7";
-    ctx.font = "12px Inter, Arial";
-    const gridLines = 4;
-    for (let i = 0; i <= gridLines; i++) {
-      const ratio = i / gridLines;
-      const y = pad.t + plotH - ratio * plotH;
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
-      ctx.beginPath();
-      ctx.moveTo(pad.l, y);
-      ctx.lineTo(pad.l + plotW, y);
-      ctx.stroke();
-      const val = minY + ratio * yRange;
-      const label = (val >= 0 ? "+₹" : "-₹") + Math.abs(val).toLocaleString("en-IN");
-      ctx.fillText(label, 6, y + 4);
-    }
-
-    const n = barPoints.length;
-    const gap = 4;
-    const barFullW = Math.max(6, plotW / Math.max(1, n));
-    const barW = Math.max(2, barFullW - gap);
-
-    barPoints.forEach(function (p, i) {
-      const x = pad.l + i * barFullW + gap / 2;
-      const y = yFor(p.pnl);
-      const color = p.pnl >= 0 ? "#22c55e" : "#ef4444";
-      ctx.fillStyle = color;
-
-      if (p.pnl >= 0) {
-        const h = Math.max(1, y0 - y);
-        ctx.fillRect(x, y, barW, h);
-      } else {
-        const h = Math.max(1, y - y0);
-        ctx.fillRect(x, y0, barW, h);
-      }
+  const leagueDistribution = useMemo(() => {
+    const map = new Map();
+    trades.forEach(function (t) {
+      const key = t.league || "Unspecified";
+      map.set(key, (map.get(key) || 0) + 1);
     });
+    return Array.from(map.entries()).map(function (pair) { return { label: pair[0], value: pair[1] }; })
+      .sort(function (a, b) { return b.value - a.value; });
+  }, [trades]);
 
-    ctx.fillStyle = "#a3b2c7";
-    ctx.font = "11px Inter, Arial";
-    const firstIdx = 0;
-    const lastIdx = n - 1;
-    const midIdx = Math.floor(lastIdx / 2);
-    const idxToX = function (idx) { return pad.l + idx * barFullW + barFullW / 2; };
-    const labelAt = function (idx, text) {
-      const x = idxToX(idx);
-      const y = pad.t + plotH + 20;
-      ctx.fillText(text, Math.max(pad.l, Math.min(x - 18, width - 60)), y);
+  // ---------- ANALYTICS: per-strategy / per-league performance ----------
+  const strategyStats = useMemo(() => {
+    const map = new Map();
+    trades.forEach(function (t) {
+      const key = t.betType || "Unspecified";
+      if (!map.has(key)) map.set(key, { betType: key, count: 0, wins: 0, pctSum: 0, profit: 0 });
+      const g = map.get(key);
+      g.count += 1;
+      if (t.profitLoss > 0) g.wins += 1;
+      const p = typeof t.returnPct === "number" ? t.returnPct : parseFloat(t.returnPct);
+      g.pctSum += Number.isNaN(p) ? 0 : p;
+      g.profit += t.profitLoss;
+    });
+    return Array.from(map.values()).map(function (g) {
+      return {
+        betType: g.betType,
+        count: g.count,
+        winRate: g.count ? Math.round((g.wins / g.count) * 100) : 0,
+        totalReturnPct: Number(g.pctSum.toFixed(2)),
+        avgReturnPct: g.count ? Number((g.pctSum / g.count).toFixed(2)) : 0,
+        profit: Number(g.profit.toFixed(2))
+      };
+    });
+  }, [trades]);
+
+  const leagueStats = useMemo(() => {
+    const map = new Map();
+    trades.forEach(function (t) {
+      const key = t.league || "Unspecified";
+      if (!map.has(key)) map.set(key, { league: key, count: 0, pctSum: 0, profit: 0 });
+      const g = map.get(key);
+      g.count += 1;
+      const p = typeof t.returnPct === "number" ? t.returnPct : parseFloat(t.returnPct);
+      g.pctSum += Number.isNaN(p) ? 0 : p;
+      g.profit += t.profitLoss;
+    });
+    return Array.from(map.values()).map(function (g) {
+      return {
+        league: g.league,
+        count: g.count,
+        totalReturnPct: Number(g.pctSum.toFixed(2)),
+        avgReturnPct: g.count ? Number((g.pctSum / g.count).toFixed(2)) : 0,
+        profit: Number(g.profit.toFixed(2))
+      };
+    });
+  }, [trades]);
+
+  // Highest returning bet type / league — ranked by total Return %, not an average.
+  const highestReturningBetType = useMemo(() => {
+    if (strategyStats.length === 0) return null;
+    return strategyStats.reduce(function (best, g) { return !best || g.totalReturnPct > best.totalReturnPct ? g : best; }, null);
+  }, [strategyStats]);
+
+  const highestReturningLeague = useMemo(() => {
+    if (leagueStats.length === 0) return null;
+    return leagueStats.reduce(function (best, g) { return !best || g.totalReturnPct > best.totalReturnPct ? g : best; }, null);
+  }, [leagueStats]);
+
+  const mostProfitableBetType = useMemo(() => {
+    if (strategyStats.length === 0) return null;
+    return strategyStats.reduce(function (best, g) { return !best || g.profit > best.profit ? g : best; }, null);
+  }, [strategyStats]);
+
+  const mostProfitableLeague = useMemo(() => {
+    if (leagueStats.length === 0) return null;
+    return leagueStats.reduce(function (best, g) { return !best || g.profit > best.profit ? g : best; }, null);
+  }, [leagueStats]);
+
+  const mostUsedLeague = useMemo(() => {
+    if (leagueStats.length === 0) return null;
+    return leagueStats.reduce(function (most, g) { return !most || g.count > most.count ? g : most; }, null);
+  }, [leagueStats]);
+
+  // Winning trade percentage — wins vs losses vs voids, as raw counts + share.
+  const outcomeBreakdown = useMemo(() => {
+    let wins = 0, losses = 0, voids = 0;
+    trades.forEach(function (t) {
+      const kind = t.outcome || (t.profitLoss >= 0 ? "win" : "loss");
+      if (kind === "win") wins += 1;
+      else if (kind === "loss") losses += 1;
+      else voids += 1;
+    });
+    const total = trades.length;
+    return {
+      wins: wins,
+      losses: losses,
+      voids: voids,
+      winPct: total ? Math.round((wins / total) * 100) : 0
     };
-    labelAt(firstIdx, barPoints[firstIdx].date);
-    labelAt(midIdx, barPoints[midIdx].date);
-    labelAt(lastIdx, barPoints[lastIdx].date);
-  }, [barPoints]);
+  }, [trades]);
 
-  useEffect(() => { drawTradeChart(); }, [drawTradeChart]);
+  // Profit factor — gross profit ÷ gross loss. A core strategy-health metric
+  // that stays meaningful even as the trade count grows (unlike an average).
+  const profitFactor = useMemo(() => {
+    let grossProfit = 0;
+    let grossLoss = 0;
+    trades.forEach(function (t) {
+      if (t.profitLoss > 0) grossProfit += t.profitLoss;
+      else if (t.profitLoss < 0) grossLoss += Math.abs(t.profitLoss);
+    });
+    if (grossLoss === 0) return grossProfit > 0 ? Infinity : 0;
+    return Number((grossProfit / grossLoss).toFixed(2));
+  }, [trades]);
 
   // ---------- design tokens ----------
   const FONT_BODY = "'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif";
@@ -1059,7 +1195,7 @@ useEffect(() => {
     userCard: { padding: "13px 12px", borderRadius: 12, background: C.surfaceAlt, border: "1px solid " + C.border, display: "flex", alignItems: "center", gap: 10 },
     userAvatar: { width: 34, height: 34, borderRadius: "50%", background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12.5, flexShrink: 0, fontFamily: FONT_DISPLAY },
     userName: { fontSize: 13.5, fontWeight: 700, letterSpacing: "-0.005em" },
-    userMeta: { fontSize: 11, color: C.textFaint, marginTop: 2 },
+    userMeta: { fontSize: 11, color: C.textFaint, marginTop: 2, fontWeight: 500, letterSpacing: "0.005em" },
 
     integrityRow: { marginTop: 10, display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 10, background: C.surfaceAlt, border: "1px solid " + C.border, fontSize: 11.5 },
     dot: (ok) => ({ width: 6, height: 6, borderRadius: "50%", background: ok ? C.green : C.red, flexShrink: 0, boxShadow: "0 0 8px " + (ok ? C.green : C.red) }),
@@ -1070,14 +1206,14 @@ useEffect(() => {
     sideFooter: { marginTop: "auto", paddingTop: 16, borderTop: "1px solid " + C.border },
 
     // ---- main ----
-    main: { flex: 1, minWidth: 0, padding: "26px 32px 64px" },
-    maxW: { maxWidth: 1260, margin: "0 auto" },
+    main: { flex: 1, minWidth: 0, padding: "26px 32px 0", display: "flex", flexDirection: "column" },
+    maxW: { maxWidth: 1260, margin: "0 auto", width: "100%", flex: 1 },
 
     topBar: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 22 },
     pageTitle: { fontFamily: FONT_DISPLAY, fontSize: 24, fontWeight: 700, letterSpacing: "-0.025em", margin: 0 },
-    pageSub: { fontSize: 13, color: C.textFaint, margin: "5px 0 0", letterSpacing: "-0.005em" },
+    pageSub: { fontSize: 13, color: C.textDim, margin: "6px 0 0", letterSpacing: "-0.001em", fontWeight: 500, lineHeight: 1.55 },
 
-    saveChip: { fontSize: 11.5, color: C.textFaint, background: C.surfaceAlt, border: "1px solid " + C.border, padding: "7px 13px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 7, fontWeight: 500 },
+    saveChip: { fontSize: 11.5, color: C.textDim, background: C.surfaceAlt, border: "1px solid " + C.border, padding: "7px 13px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 7, fontWeight: 600, letterSpacing: "0.005em" },
 
     banner: (type) => ({ padding: "11px 15px", borderRadius: 10, textAlign: "center", fontSize: 13, fontWeight: 500,
       background: type === "ok" ? C.greenDim : C.redDim,
@@ -1094,15 +1230,17 @@ useEffect(() => {
     kpiCard: { background: C.surface, border: "1px solid " + C.border, borderRadius: 14, padding: "16px 17px", display: "flex", flexDirection: "column", justifyContent: "center" },
     kpiLabel: { fontSize: 10.5, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" },
     kpiValue: { ...NUM, fontSize: 22, fontWeight: 700, marginTop: 7, letterSpacing: "-0.02em", lineHeight: 1.1 },
-    kpiFoot: { fontSize: 11, color: C.textFaint, marginTop: 5, letterSpacing: "-0.005em" },
+    kpiFoot: { fontSize: 11, color: C.textDim, marginTop: 6, letterSpacing: "0.005em", fontWeight: 500, lineHeight: 1.5 },
+    kpiFootRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6 },
+    kpiFootBtn: { fontSize: 10.5, color: C.accent, background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 700, fontFamily: FONT_BODY, letterSpacing: "0.01em", textDecoration: "underline", textUnderlineOffset: "2px" },
 
     // generic panel
-    panel: { background: C.surface, border: "1px solid " + C.border, borderRadius: 16, padding: 20 },
+    panel: { background: C.surface, border: "1px solid " + C.border, borderRadius: 16, padding: 20, minWidth: 0 },
     panelHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 16 },
     panelTitleWrap: { display: "flex", alignItems: "center", gap: 9 },
     panelIcon: { width: 25, height: 25, borderRadius: 7, background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
     panelTitle: { fontFamily: FONT_DISPLAY, fontSize: 14.5, fontWeight: 700, margin: 0, letterSpacing: "-0.015em" },
-    panelSub: { fontSize: 11.5, color: C.textFaint, margin: "2px 0 0", letterSpacing: "-0.005em" },
+    panelSub: { fontSize: 12, color: C.textDim, margin: "3px 0 0", letterSpacing: "0.002em", fontWeight: 500, lineHeight: 1.55 },
 
     // inputs / buttons
     field: { flex: "1 1 200px", minWidth: 0, padding: "10px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em" },
@@ -1111,8 +1249,8 @@ useEffect(() => {
     btnGhost: { padding: "9px 14px", borderRadius: 9, border: "1px solid " + C.border, background: "transparent", color: C.textDim, cursor: "pointer", fontWeight: 500, fontSize: 12, whiteSpace: "nowrap", fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
     btnGhostSmall: { padding: "6px 10px", borderRadius: 7, border: "1px solid " + C.border, background: "transparent", color: C.textDim, cursor: "pointer", fontWeight: 500, fontSize: 11, whiteSpace: "nowrap", fontFamily: FONT_BODY },
 
-    // workspace grid
-    workspace: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16, alignItems: "start" },
+    // workspace (stacked flow: monthly progress, then recent trades)
+    workspace: { display: "flex", flexDirection: "column", gap: 16, marginTop: 16 },
 
     chartWrap: { width: "100%", borderRadius: 12, border: "1px solid " + C.border, background: "#05060a", padding: 8, marginTop: 14, overflowX: "auto" },
 
@@ -1135,8 +1273,23 @@ useEffect(() => {
     amberText: { ...NUM, color: C.amber, fontWeight: 700 },
 
     table: { width: "100%", borderCollapse: "separate", borderSpacing: "0 6px", fontSize: 13 },
-    th: { padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.05em" },
-    td: { padding: "10px 10px", background: "#05060a", letterSpacing: "-0.005em" },
+    th: { padding: "6px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.05em", whiteSpace: "nowrap" },
+    td: { padding: "10px 10px", background: "#05060a", letterSpacing: "-0.005em", whiteSpace: "nowrap" },
+    tableWrap: { width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" },
+
+    // ---- analytics ----
+    analyticsGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 16 },
+    insightGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginTop: 16 },
+    insightCard: { background: C.surface, border: "1px solid " + C.border, borderRadius: 14, padding: "15px 16px", minWidth: 0 },
+    insightHead: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 },
+    insightIcon: { width: 22, height: 22, borderRadius: 6, background: C.accentDim, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+    insightLabel: { fontSize: 10.5, fontWeight: 700, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" },
+    insightMain: { ...NUM, fontSize: 19, fontWeight: 700, letterSpacing: "-0.015em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+    insightSub: { fontSize: 12, color: C.textDim, marginTop: 5, letterSpacing: "0.002em", fontWeight: 500, lineHeight: 1.5 },
+    insightStatRow: { display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 11.5 },
+    insightStatLabel: { color: C.textDim, fontWeight: 500 },
+    insightStatValue: { ...NUM, color: C.text, fontWeight: 600 },
+    insightEmpty: { fontSize: 12, color: C.textDim, fontWeight: 500 },
 
     // ---- trade entry form ----
     formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
@@ -1146,7 +1299,7 @@ useEffect(() => {
     formInput: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em" },
     formSelect: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em", cursor: "pointer" },
     formTextarea: { width: "100%", padding: "11px 13px", borderRadius: 9, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", fontSize: 13.5, fontFamily: FONT_BODY, boxSizing: "border-box", letterSpacing: "-0.005em", resize: "vertical", minHeight: 60 },
-    formHint: { fontSize: 11, color: C.textFaint, letterSpacing: "-0.005em" },
+    formHint: { fontSize: 11.5, color: C.textDim, letterSpacing: "0.005em", fontWeight: 500 },
     outcomeRow: { display: "flex", gap: 8 },
     outcomeBtn: (active, kind) => {
       const map = { win: C.green, loss: C.red, void: C.amber };
@@ -1159,8 +1312,13 @@ useEffect(() => {
       };
     },
     profitPreview: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 15px", borderRadius: 10, background: C.surfaceAlt, border: "1px solid " + C.border, marginTop: 4 },
-    profitPreviewLabel: { fontSize: 11.5, color: C.textFaint, fontWeight: 600, letterSpacing: "0.02em" },
+    profitPreviewLabel: { fontSize: 11.5, color: C.textDim, fontWeight: 600, letterSpacing: "0.02em" },
     profitPreviewValue: (v) => ({ ...NUM, fontSize: 17, fontWeight: 700, color: v == null ? C.textFaint : v >= 0 ? C.green : C.red }),
+
+    // ---- footer ----
+    footer: { marginTop: 40, padding: "22px 4px", borderTop: "1px solid " + C.border, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+    footerBrand: { fontSize: 12, color: C.textDim, fontWeight: 600, letterSpacing: "0.01em" },
+    footerSub: { fontSize: 11, color: C.textFaint, fontWeight: 500, letterSpacing: "0.02em" },
 
     // auth — single centered card
     authShell: { minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.text, fontFamily: FONT_BODY, WebkitFontSmoothing: "antialiased", padding: 24 },
@@ -1176,16 +1334,46 @@ useEffect(() => {
       border: "none", cursor: "pointer", fontFamily: FONT_BODY, letterSpacing: "-0.005em"
     }),
     authCardTitle: { fontFamily: FONT_DISPLAY, fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em", marginBottom: 6, position: "relative" },
-    authCardSub: { color: C.textFaint, fontSize: 13, marginBottom: 22, letterSpacing: "-0.005em", lineHeight: 1.5, position: "relative" },
+    authCardSub: { color: C.textDim, fontSize: 13, marginBottom: 22, letterSpacing: "0.002em", lineHeight: 1.6, position: "relative", fontWeight: 500 },
     authFieldLabel: { fontSize: 11.5, fontWeight: 600, color: C.textDim, marginBottom: 7, display: "block", letterSpacing: "0.01em" },
     authInput: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid " + C.border, background: "#05060a", color: C.text, outline: "none", boxSizing: "border-box", fontSize: 14, fontFamily: FONT_BODY, letterSpacing: "-0.005em" },
     authFieldWrap: { marginBottom: 16, position: "relative" },
-    authFootnote: { fontSize: 11, color: C.textFaint, marginTop: 22, textAlign: "center", lineHeight: 1.7, letterSpacing: "-0.005em", position: "relative" },
-    authFootnoteStrong: { color: C.textDim, fontWeight: 600 }
+    authFootnote: { fontSize: 11, color: C.textFaint, marginTop: 22, textAlign: "center", lineHeight: 1.7, letterSpacing: "0.01em", position: "relative", fontWeight: 500 },
+    authFootnoteStrong: { color: C.textDim, fontWeight: 700 }
   };
 
   const FontImport = () => (
-    <style>{"@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');"}</style>
+    <style>{"@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap');" +
+      "html{overflow-x:hidden;}" +
+      "body{overflow-x:hidden;}" +
+      "*{box-sizing:border-box;}" +
+      "@media (max-width: 1080px){.td-analytics-grid{grid-template-columns:1fr !important;}}" +
+      "@media (max-width: 900px){" +
+        ".td-shell{flex-direction:column !important;}" +
+        ".td-sidebar{width:100% !important;height:auto !important;position:relative !important;top:auto !important;border-right:none !important;border-bottom:1px solid rgba(255,255,255,0.06) !important;padding:16px 14px !important;}" +
+        ".td-main{padding:18px 16px 0 !important;}" +
+        ".td-hero-grid{grid-template-columns:1fr !important;}" +
+        ".td-form-grid{grid-template-columns:1fr !important;}" +
+        ".td-footer{justify-content:center !important;text-align:center !important;flex-direction:column !important;gap:6px !important;}" +
+      "}" +
+      "@media (max-width: 640px){" +
+        ".td-kpi-grid{grid-template-columns:repeat(2,1fr) !important;}" +
+        ".td-insight-grid{grid-template-columns:repeat(2,1fr) !important;}" +
+        ".td-outcome-row{flex-direction:column !important;}" +
+        ".td-top-bar{align-items:stretch !important;}" +
+        ".td-panel-head{align-items:flex-start !important;}" +
+      "}" +
+      "@media (max-width: 420px){" +
+        ".td-kpi-grid{grid-template-columns:1fr !important;}" +
+        ".td-insight-grid{grid-template-columns:1fr !important;}" +
+      "}"}</style>
+  );
+
+  const Footer = () => (
+    <footer style={s.footer} className="td-footer">
+      <span style={s.footerBrand}>Part of Zenith Edge Systems</span>
+      <span style={s.footerSub}>Developed &amp; Secured by Ansh Maheshwari · © {new Date().getFullYear()}</span>
+    </footer>
   );
 
   // ---------- AUTH SCREEN ----------
@@ -1266,11 +1454,11 @@ useEffect(() => {
 
   // ---------- MAIN APP ----------
   return (
-    <div style={s.shell}>
+    <div style={s.shell} className="td-shell">
       <FontImport />
 
       {/* SIDEBAR */}
-      <aside style={s.sidebar}>
+      <aside style={s.sidebar} className="td-sidebar">
         <div style={s.sideSectionLabel}>Account</div>
         <div style={s.userCard}>
           <div style={s.userAvatar}>{activeUser.slice(0, 2).toUpperCase()}</div>
@@ -1319,7 +1507,7 @@ useEffect(() => {
           </button>
         ) : (
           <div style={{ padding: "9px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-            <span style={{ fontSize: 11.5, color: C.textDim }}>Clear all trades?</span>
+            <span style={{ fontSize: 11.5, color: C.textDim, fontWeight: 500 }}>Clear all trades?</span>
             <div style={{ display: "flex", gap: 6 }}>
               <button style={{ ...s.btnGhostSmall, color: C.red, borderColor: "rgba(245,88,107,.4)" }} onClick={clearAll}>Yes, clear</button>
               <button style={s.btnGhostSmall} onClick={() => setConfirmClear(false)}>Cancel</button>
@@ -1335,10 +1523,10 @@ useEffect(() => {
       </aside>
 
       {/* MAIN */}
-      <main style={s.main}>
+      <main style={s.main} className="td-main">
         <div style={s.maxW}>
 
-          <div style={s.topBar}>
+          <div style={s.topBar} className="td-top-bar">
             <div>
               <h1 style={s.pageTitle}>Dashboard</h1>
               <p style={s.pageSub}>Live overview of your portfolio &amp; trading performance</p>
@@ -1352,7 +1540,7 @@ useEffect(() => {
           {banner.msg ? <div style={s.banner(banner.type)}>{banner.msg}</div> : null}
 
           {/* HERO + KPI ROW */}
-          <div style={s.heroGrid}>
+          <div style={s.heroGrid} className="td-hero-grid">
             <div style={s.hero}>
               <div>
                 <div style={s.heroLabel}>Portfolio Value</div>
@@ -1371,7 +1559,7 @@ useEffect(() => {
               </div>
             </div>
 
-            <div style={s.kpiGrid}>
+            <div style={s.kpiGrid} className="td-kpi-grid">
               <div style={s.kpiCard}>
                 <div style={s.kpiLabel}>Net Profit</div>
                 <div style={{ ...s.kpiValue, color: totalProfit >= 0 ? C.green : C.red }}>
@@ -1391,31 +1579,34 @@ useEffect(() => {
                 <div style={{ ...s.kpiValue, color: roiPct >= 0 ? C.green : C.red }}>
                   {roiPct >= 0 ? "+" : ""}{fmtPct(roiPct)}%
                 </div>
-                <div style={s.kpiFoot}>baseline ₹{fmtINR(roiBaseline)}</div>
+                <div style={s.kpiFootRow}>
+                  <span style={s.kpiFoot}>baseline ₹{fmtINR(roiBaseline)}</span>
+                  <button style={s.kpiFootBtn} onClick={handleSetRoiBaseline}>Set ROI Baseline</button>
+                </div>
               </div>
               <div style={s.kpiCard}>
                 <div style={s.kpiLabel}>Total Return %</div>
                 <div style={{ ...s.kpiValue, color: totalReturnPct >= 0 ? C.green : C.red }}>
                   {totalReturnPct >= 0 ? "+" : "-"}{fmtPct(Math.abs(totalReturnPct))}%
                 </div>
-                <div style={s.kpiFoot}>sum of every trade's % return</div>
+                <div style={s.kpiFoot}>Sum of every trade's percentage return</div>
               </div>
             </div>
           </div>
 
           {/* RECORD NEW TRADE */}
           <div style={{ ...s.panel, marginTop: 16 }}>
-            <div style={s.panelHead}>
+            <div style={s.panelHead} className="td-panel-head">
               <div style={s.panelTitleWrap}>
                 <div style={s.panelIcon}><Icon name="plus" /></div>
                 <div>
                   <h3 style={s.panelTitle}>Record New Trade</h3>
-                  <p style={s.panelSub}>Profit is calculated automatically from stake and return % — logged into the tamper-evident chain</p>
+                  <p style={s.panelSub}>Profit is calculated automatically from stake and return, then logged into the tamper-evident chain.</p>
                 </div>
               </div>
             </div>
 
-            <div style={s.formGrid}>
+            <div style={s.formGrid} className="td-form-grid">
               <div style={s.formGroup}>
                 <label style={s.formLabel}>Date</label>
                 <input
@@ -1511,7 +1702,7 @@ useEffect(() => {
 
               <div style={{ ...s.formGroup, ...s.formFull }}>
                 <label style={s.formLabel}>Outcome</label>
-                <div style={s.outcomeRow}>
+                <div style={s.outcomeRow} className="td-outcome-row">
                   {OUTCOMES.map(function (o) {
                     return (
                       <button
@@ -1552,15 +1743,15 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* WORKSPACE: Monthly Progress + Recent Trades */}
-          <div style={s.workspace}>
+          {/* WORKSPACE: Monthly Progress, then Recent Trades — stacked for a more natural reading flow */}
+          <div style={s.workspace} className="td-workspace">
             <div style={s.panel}>
-              <div style={s.panelHead}>
+              <div style={s.panelHead} className="td-panel-head">
                 <div style={s.panelTitleWrap}>
                   <div style={s.panelIcon}><Icon name="bars" /></div>
                   <div>
                     <h3 style={s.panelTitle}>Monthly Progress</h3>
-                    <p style={s.panelSub}>P&amp;L broken down by month</p>
+                    <p style={s.panelSub}>P&amp;L, return % and volume by month.</p>
                   </div>
                 </div>
                 <button style={s.btnGhostSmall} onClick={exportMonthlyCSV}>
@@ -1568,19 +1759,21 @@ useEffect(() => {
                 </button>
               </div>
 
-              <div style={{ overflowX: "auto" }}>
+              <div style={s.tableWrap}>
                 <table style={s.table}>
                   <thead>
                     <tr>
                       <th style={s.th}>Month</th>
                       <th style={s.th}>Trades</th>
                       <th style={s.th}>Win%</th>
+                      <th style={s.th}>Return%</th>
+                      <th style={s.th}>Avg Return%</th>
                       <th style={s.th}>P&amp;L (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {monthly.length === 0 ? (
-                      <tr><td style={{ ...s.td, color: C.textFaint }} colSpan={4}>No data yet</td></tr>
+                      <tr><td style={{ ...s.td, color: C.textDim, fontWeight: 500 }} colSpan={6}>No data yet</td></tr>
                     ) : (
                       monthly.map(function (m) {
                         return (
@@ -1588,6 +1781,10 @@ useEffect(() => {
                             <td style={s.td}>{m.month}</td>
                             <td style={{ ...s.td, ...NUM }}>{m.trades}</td>
                             <td style={{ ...s.td, ...NUM }}>{m.winPct}%</td>
+                            <td style={{ ...s.td, ...NUM, color: m.returnPct >= 0 ? C.green : C.red }}>
+                              {(m.returnPct >= 0 ? "+" : "")}{m.returnPct}%
+                            </td>
+                            <td style={{ ...s.td, ...NUM }}>{(m.avgReturnPct >= 0 ? "+" : "")}{m.avgReturnPct}%</td>
                             <td style={{ ...s.td, ...NUM, color: m.pnl >= 0 ? C.green : C.red, fontWeight: 700 }}>
                               {(m.pnl >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(m.pnl))}
                             </td>
@@ -1605,71 +1802,211 @@ useEffect(() => {
             </div>
 
             <div style={s.panel}>
-              <div style={s.panelHead}>
+              <div style={s.panelHead} className="td-panel-head">
                 <div style={s.panelTitleWrap}>
                   <div style={s.panelIcon}><Icon name="list" /></div>
                   <div>
                     <h3 style={s.panelTitle}>Recent Trades</h3>
-                    <p style={s.panelSub}>{trades.length} total, newest first</p>
+                    <p style={s.panelSub}>{trades.length} total, newest first.</p>
                   </div>
                 </div>
               </div>
 
               {trades.length === 0 ? (
-                <div style={{ color: C.textFaint, fontSize: 13, padding: "22px 0", textAlign: "center" }}>No trades yet</div>
+                <div style={{ color: C.textDim, fontSize: 13, fontWeight: 500, padding: "22px 0", textAlign: "center" }}>No trades yet</div>
               ) : (
-                <div style={s.tradesScroll}>
-                  {trades.map(function (t) {
-                    const outcomeKind = t.outcome || (t.profitLoss >= 0 ? "win" : "loss");
-                    const outcomeLabel = t.outcome ? t.outcome.toUpperCase() : (t.profitLoss >= 0 ? "WIN" : "LOSS");
-                    const outcomeIcon = outcomeKind === "win" ? "check" : outcomeKind === "loss" ? "x" : "circle";
-                    return (
-                      <div key={t.id} style={s.tradeItem}>
-                        <div style={{ minWidth: 0 }}>
-                          <div>
-                            <strong style={{ fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}>{t.betType || "Trade #" + t.id}</strong>
-                            <span style={{ color: C.textFaint, fontSize: 12 }}> • {t.date}</span>
-                            <span style={s.badge(outcomeKind)}><Icon name={outcomeIcon} size={9} />{outcomeLabel}</span>
-                          </div>
-
-                          <div style={s.tradeMetaRow}>
-                            {t.league ? <span style={s.tradeChip}>{t.league}</span> : null}
-                            {t.returnPct != null ? <span style={s.tradeChip}>Return {t.returnPct >= 0 ? "+" : ""}{t.returnPct}%</span> : null}
-                            {t.stake != null ? <span style={s.tradeChip}>Stake ₹{fmtINR(t.stake)}</span> : null}
-                            {t.returnReceived != null ? <span style={s.tradeChip}>Received ₹{fmtINR(t.returnReceived)}</span> : null}
-                          </div>
-
-                          {t.note ? <div style={s.note}>{t.note}</div> : null}
-                          <div style={{ color: C.textFaint, fontSize: 10.5, marginTop: 6, fontFamily: "monospace" }}>
-                            h:{t.hash ? t.hash.slice(-8) : ""} • prev:{t.prevHash ? t.prevHash.slice(-8) : ""}
-                          </div>
-                        </div>
-                        <div style={t.profitLoss > 0 ? s.green : t.profitLoss < 0 ? s.red : s.amberText}>
-                          {(t.profitLoss >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(t.profitLoss))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div style={{ ...s.tableWrap, maxHeight: 460, overflowY: "auto" }}>
+                  <table style={s.table}>
+                    <thead>
+                      <tr>
+                        <th style={s.th}>Date</th>
+                        <th style={s.th}>League</th>
+                        <th style={s.th}>Bet Type</th>
+                        <th style={s.th}>Stake</th>
+                        <th style={s.th}>Return</th>
+                        <th style={s.th}>Profit</th>
+                        <th style={s.th}>Return%</th>
+                        <th style={s.th}>Outcome</th>
+                        <th style={s.th}>Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map(function (t) {
+                        const outcomeKind = t.outcome || (t.profitLoss >= 0 ? "win" : "loss");
+                        const outcomeLabel = t.outcome ? t.outcome.toUpperCase() : (t.profitLoss >= 0 ? "WIN" : "LOSS");
+                        const outcomeIcon = outcomeKind === "win" ? "check" : outcomeKind === "loss" ? "x" : "circle";
+                        const chainTitle = "hash:" + (t.hash ? t.hash.slice(-8) : "") + " prev:" + (t.prevHash ? t.prevHash.slice(-8) : "");
+                        return (
+                          <tr key={t.id}>
+                            <td style={s.td}>{t.date}</td>
+                            <td style={s.td}>{t.league || "—"}</td>
+                            <td style={s.td}>{t.betType || "—"}</td>
+                            <td style={{ ...s.td, ...NUM }}>₹{fmtINR(t.stake)}</td>
+                            <td style={{ ...s.td, ...NUM }}>₹{fmtINR(t.returnReceived)}</td>
+                            <td style={{ ...s.td, ...NUM, color: t.profitLoss > 0 ? C.green : t.profitLoss < 0 ? C.red : C.amber, fontWeight: 700 }}>
+                              {(t.profitLoss >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(t.profitLoss))}
+                            </td>
+                            <td style={{ ...s.td, ...NUM, color: t.returnPct >= 0 ? C.green : C.red }}>
+                              {(t.returnPct >= 0 ? "+" : "")}{t.returnPct}%
+                            </td>
+                            <td style={s.td}>
+                              <span style={s.badge(outcomeKind)} title={chainTitle}>
+                                <Icon name={outcomeIcon} size={9} />{outcomeLabel}
+                              </span>
+                            </td>
+                            <td style={{ ...s.td, color: C.textDim, whiteSpace: "normal", minWidth: 140 }}>{t.note || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
           </div>
 
-          {/* PER-TRADE BAR CHART */}
-          <div style={{ ...s.panel, marginTop: 16 }}>
-            <div style={s.panelHead}>
-              <div style={s.panelTitleWrap}>
-                <div style={s.panelIcon}><Icon name="trend" /></div>
-                <div>
-                  <h3 style={s.panelTitle}>Trade P&amp;L — Bar Chart</h3>
-                  <p style={s.panelSub}>Chronological, per trade</p>
-                </div>
+          {/* ANALYTICS */}
+          <div style={{ ...s.panelHead, marginTop: 24 }} className="td-panel-head">
+            <div style={s.panelTitleWrap}>
+              <div style={s.panelIcon}><Icon name="pie" /></div>
+              <div>
+                <h3 style={s.panelTitle}>Analytics</h3>
+                <p style={s.panelSub}>Where your trades come from, and what's actually working.</p>
               </div>
             </div>
-            <div ref={tradeChartWrapRef} style={s.chartWrap}>
-              <canvas ref={tradeCanvasRef} />
+          </div>
+
+          <div style={s.analyticsGrid} className="td-analytics-grid">
+            <div style={s.panel}>
+              <div style={s.panelHead} className="td-panel-head">
+                <div style={s.panelTitleWrap}>
+                  <div style={s.panelIcon}><Icon name="pie" /></div>
+                  <div>
+                    <h3 style={s.panelTitle}>Bet Type Distribution</h3>
+                    <p style={s.panelSub}>Share of trades by bet type.</p>
+                  </div>
+                </div>
+              </div>
+              <PieChart data={betTypeDistribution} textColor={C.text} faintColor={C.textFaint} borderColor={C.border} />
+            </div>
+
+            <div style={s.panel}>
+              <div style={s.panelHead} className="td-panel-head">
+                <div style={s.panelTitleWrap}>
+                  <div style={s.panelIcon}><Icon name="pie" /></div>
+                  <div>
+                    <h3 style={s.panelTitle}>League Distribution</h3>
+                    <p style={s.panelSub}>Share of trades by league.</p>
+                  </div>
+                </div>
+              </div>
+              <PieChart data={leagueDistribution} textColor={C.text} faintColor={C.textFaint} borderColor={C.border} />
             </div>
           </div>
+
+          <div style={s.insightGrid} className="td-insight-grid">
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="trend" size={13} /></div>
+                <span style={s.insightLabel}>Highest Returning Bet Type</span>
+              </div>
+              {highestReturningBetType ? (
+                <>
+                  <div style={s.insightMain}>{highestReturningBetType.betType}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Return%</span><span style={{ ...s.insightStatValue, color: highestReturningBetType.totalReturnPct >= 0 ? C.green : C.red }}>{(highestReturningBetType.totalReturnPct >= 0 ? "+" : "")}{highestReturningBetType.totalReturnPct}%</span></div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Profit</span><span style={{ ...s.insightStatValue, color: highestReturningBetType.profit >= 0 ? C.green : C.red }}>{(highestReturningBetType.profit >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(highestReturningBetType.profit))}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="compass" size={13} /></div>
+                <span style={s.insightLabel}>Highest Returning League</span>
+              </div>
+              {highestReturningLeague ? (
+                <>
+                  <div style={s.insightMain}>{highestReturningLeague.league}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Return%</span><span style={{ ...s.insightStatValue, color: highestReturningLeague.totalReturnPct >= 0 ? C.green : C.red }}>{(highestReturningLeague.totalReturnPct >= 0 ? "+" : "")}{highestReturningLeague.totalReturnPct}%</span></div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Profit</span><span style={{ ...s.insightStatValue, color: highestReturningLeague.profit >= 0 ? C.green : C.red }}>{(highestReturningLeague.profit >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(highestReturningLeague.profit))}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="wallet" size={13} /></div>
+                <span style={s.insightLabel}>Most Profitable Bet Type</span>
+              </div>
+              {mostProfitableBetType ? (
+                <>
+                  <div style={{ ...s.insightMain, color: mostProfitableBetType.profit >= 0 ? C.green : C.red }}>{(mostProfitableBetType.profit >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(mostProfitableBetType.profit))}</div>
+                  <div style={s.insightSub}>{mostProfitableBetType.betType}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Trades</span><span style={s.insightStatValue}>{mostProfitableBetType.count}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="wallet" size={13} /></div>
+                <span style={s.insightLabel}>Most Profitable League</span>
+              </div>
+              {mostProfitableLeague ? (
+                <>
+                  <div style={{ ...s.insightMain, color: mostProfitableLeague.profit >= 0 ? C.green : C.red }}>{(mostProfitableLeague.profit >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(mostProfitableLeague.profit))}</div>
+                  <div style={s.insightSub}>{mostProfitableLeague.league}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Trades</span><span style={s.insightStatValue}>{mostProfitableLeague.count}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="bars" size={13} /></div>
+                <span style={s.insightLabel}>Most Used League</span>
+              </div>
+              {mostUsedLeague ? (
+                <>
+                  <div style={s.insightMain}>{mostUsedLeague.league}</div>
+                  <div style={s.insightSub}>{mostUsedLeague.count} trade{mostUsedLeague.count === 1 ? "" : "s"} logged</div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="target" size={13} /></div>
+                <span style={s.insightLabel}>Winning Trade Percentage</span>
+              </div>
+              <div style={{ ...s.insightMain, color: C.green }}>{outcomeBreakdown.winPct}%</div>
+              <div style={s.insightStatRow}><span style={s.insightStatLabel}>Wins</span><span style={{ ...s.insightStatValue, color: C.green }}>{outcomeBreakdown.wins}</span></div>
+              <div style={s.insightStatRow}><span style={s.insightStatLabel}>Losses</span><span style={{ ...s.insightStatValue, color: C.red }}>{outcomeBreakdown.losses}</span></div>
+              <div style={s.insightStatRow}><span style={s.insightStatLabel}>Voids</span><span style={{ ...s.insightStatValue, color: C.amber }}>{outcomeBreakdown.voids}</span></div>
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="scale" size={13} /></div>
+                <span style={s.insightLabel}>Profit Factor</span>
+              </div>
+              <div style={{ ...s.insightMain, color: profitFactor >= 1 ? C.green : C.red }}>
+                {profitFactor === Infinity ? "∞" : profitFactor}
+              </div>
+              <div style={s.insightSub}>Gross profit ÷ gross loss — above 1 means the strategy is net positive.</div>
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="flag" size={13} /></div>
+                <span style={s.insightLabel}>Bet Types In Use</span>
+              </div>
+              <div style={s.insightMain}>{strategyStats.length}</div>
+              <div style={s.insightSub}>Distinct strategies logged across {trades.length} trade{trades.length === 1 ? "" : "s"}.</div>
+            </div>
+          </div>
+
+          <Footer />
 
         </div>
       </main>
