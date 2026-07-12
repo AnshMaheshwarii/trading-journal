@@ -387,6 +387,36 @@ function Icon({ name, size = 15, style }) {
           <path d="M6 4.5h11l-2.6 3.6L17 11.7H6" />
         </svg>
       );
+    case "flame":
+      return (
+        <svg {...common}>
+          <path d="M12 3.5c1.2 2.4-.6 3.6-1.4 5-1 1.7-.9 3.4.2 4.6-1.8-.5-3-2.1-2.9-4C6.2 10.8 5 13 5 15.2 5 18.7 8.1 21 12 21s7-2.3 7-5.8c0-3.4-2.2-6-4.3-8.1-.4-.4-.9-.2-.8.4.3 1.7-.4 2.9-1.5 3.6-.2-2.9-1-5.8-.4-7.6z" />
+        </svg>
+      );
+    case "award":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="8.5" r="4.7" />
+          <path d="M9 12.6L7.7 20l4.3-2.4 4.3 2.4-1.3-7.4" />
+        </svg>
+      );
+    case "alertTriangle":
+      return (
+        <svg {...common}>
+          <path d="M12 4.2l9 15.6H3l9-15.6z" />
+          <path d="M12 10v3.6" />
+          <path d="M12 16.5h.01" />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5.5" width="16" height="14.5" rx="2.2" />
+          <path d="M4 9.8h16" />
+          <path d="M8 3.5v3.6" />
+          <path d="M16 3.5v3.6" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -909,12 +939,18 @@ useEffect(() => {
         avgReturnPct: v.count ? Number((v.pctSum / v.count).toFixed(2)) : 0
       };
     }).sort(function (a, b) { return a.month > b.month ? 1 : -1; });
-    return arr;
+
+    // Running cumulative P&L — turns the monthly bars into an equity curve too.
+    let running = 0;
+    return arr.map(function (m) {
+      running = Number((running + m.pnl).toFixed(2));
+      return { ...m, cumulative: running };
+    });
   }, [trades]);
 
   const exportMonthlyCSV = () => {
-    const header = "Month,Trades,Win%,Return%,Avg Return%,P&L (INR)\n";
-    const rows = monthly.map(function (m) { return [m.month, m.trades, m.winPct, m.returnPct, m.avgReturnPct, m.pnl].join(","); });
+    const header = "Month,Trades,Win%,Return%,Avg Return%,P&L (INR),Cumulative P&L (INR)\n";
+    const rows = monthly.map(function (m) { return [m.month, m.trades, m.winPct, m.returnPct, m.avgReturnPct, m.pnl, m.cumulative].join(","); });
     const csv = header + rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -925,9 +961,75 @@ useEffect(() => {
     URL.revokeObjectURL(url);
   };
 
-  // ---------- Monthly bar chart ----------
+  // Format "YYYY-MM" into a compact, premium month label like "Jul '26"
+  const formatMonthLabel = useCallback(function (key) {
+    if (!key || key === "Unknown") return "Unknown";
+    const parts = key.split("-");
+    const y = parts[0];
+    const mIdx = parseInt(parts[1], 10) - 1;
+    const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    if (mIdx < 0 || mIdx > 11 || !y) return key;
+    return names[mIdx] + " '" + y.slice(2);
+  }, []);
+
+  // Compact currency for axis labels — ₹12.4K / ₹1.35L instead of long strings
+  const fmtCompactINR = useCallback(function (n) {
+    const abs = Math.abs(n);
+    if (abs >= 100000) return (n / 100000).toFixed(2) + "L";
+    if (abs >= 1000) return (n / 1000).toFixed(1) + "K";
+    return Math.round(n).toLocaleString("en-IN");
+  }, []);
+
+  // ---------- Monthly performance chart (P&L bars + cumulative equity line) ----------
   const monthChartWrapRef = useRef(null);
   const monthCanvasRef = useRef(null);
+  const [hoveredMonth, setHoveredMonth] = useState(null); // { idx, left }
+
+  // Shared geometry so drawing and hit-testing (hover) always agree.
+  const getChartGeometry = useCallback(function (width) {
+    const height = Math.max(240, Math.floor(width * 0.42));
+    const pad = { l: 56, r: 16, t: 22, b: 40 };
+    const plotW = Math.max(1, width - pad.l - pad.r);
+    const plotH = Math.max(1, height - pad.t - pad.b);
+    const n = monthly.length;
+    const barFullW = n ? plotW / n : plotW;
+    const barW = Math.max(6, Math.min(38, barFullW - 14));
+
+    const values = n ? monthly.reduce(function (acc, m) { acc.push(m.pnl, m.cumulative); return acc; }, []) : [0];
+    const minY = Math.min(0, Math.min.apply(null, values));
+    const maxY = Math.max(0, Math.max.apply(null, values));
+    const paddedRange = (maxY - minY || 1) * 1.12;
+    const mid = (maxY + minY) / 2;
+    const domainMin = mid - paddedRange / 2;
+    const domainMax = mid + paddedRange / 2;
+    const yFor = function (val) { return pad.t + plotH - ((val - domainMin) / (domainMax - domainMin || 1)) * plotH; };
+
+    return { width, height, pad, plotW, plotH, n, barFullW, barW, yFor, y0: yFor(0), domainMin, domainMax };
+  }, [monthly]);
+
+  // Rounded-rect bar path; rounds the "far" edge from the zero line (top for
+  // gains, bottom for losses) so bars read as pills rather than plain blocks.
+  const pathRoundedBar = useCallback(function (ctx, x, y, w, h, r, roundTop) {
+    const rad = Math.max(0, Math.min(r, w / 2, h));
+    ctx.beginPath();
+    if (roundTop) {
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x, y + rad);
+      ctx.quadraticCurveTo(x, y, x + rad, y);
+      ctx.lineTo(x + w - rad, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+      ctx.lineTo(x + w, y + h);
+      ctx.closePath();
+    } else {
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + h - rad);
+      ctx.quadraticCurveTo(x, y + h, x + rad, y + h);
+      ctx.lineTo(x + w - rad, y + h);
+      ctx.quadraticCurveTo(x + w, y + h, x + w, y + h - rad);
+      ctx.lineTo(x + w, y);
+      ctx.closePath();
+    }
+  }, []);
 
   const drawMonthlyChart = useCallback(() => {
     const wrap = monthChartWrapRef.current;
@@ -935,8 +1037,9 @@ useEffect(() => {
     if (!wrap || !canvas) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const width = wrap.clientWidth;
-    const height = Math.max(220, Math.floor(width * 0.5));
+    const geo = getChartGeometry(wrap.clientWidth);
+    const { width, height, pad, plotW, plotH, n, barFullW, barW, yFor, y0 } = geo;
+
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
     canvas.width = Math.floor(width * dpr);
@@ -944,86 +1047,133 @@ useEffect(() => {
 
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    ctx.fillStyle = "rgba(2,6,23,0.65)";
-    ctx.fillRect(0, 0, width, height);
+    ctx.clearRect(0, 0, width, height);
 
     if (monthly.length === 0) {
-      ctx.fillStyle = "#94a3b8";
-      ctx.font = "14px Inter, Arial";
-      ctx.fillText("No data yet — add trades to see monthly progress.", 12, 24);
+      ctx.fillStyle = "#5b6478";
+      ctx.font = "500 13px Inter, Arial";
+      ctx.fillText("No trades yet — your monthly performance curve will build up here.", 14, height / 2);
       return;
     }
 
-    const pad = { l: 44, r: 18, t: 16, b: 48 };
-    const plotW = width - pad.l - pad.r;
-    const plotH = height - pad.t - pad.b;
-
-    const minY = Math.min(0, Math.min.apply(null, monthly.map(function (m) { return m.pnl; })));
-    const maxY = Math.max(0, Math.max.apply(null, monthly.map(function (m) { return m.pnl; })));
-    const yRange = maxY - minY || 1;
-
-    const yFor = function (val) { return pad.t + plotH - ((val - minY) / yRange) * plotH; };
-
-    // axes
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad.l, pad.t);
-    ctx.lineTo(pad.l, pad.t + plotH);
-    ctx.lineTo(pad.l + plotW, pad.t + plotH);
-    ctx.stroke();
-
-    // zero line
-    const y0 = yFor(0);
-    ctx.strokeStyle = "rgba(255,255,255,0.2)";
-    ctx.beginPath();
-    ctx.moveTo(pad.l, y0);
-    ctx.lineTo(pad.l + plotW, y0);
-    ctx.stroke();
-
-    // y grid & labels
-    ctx.fillStyle = "#a3b2c7";
-    ctx.font = "12px Inter, Arial";
+    // subtle horizontal grid
     const gridLines = 4;
+    ctx.font = "500 10.5px Inter, Arial";
     for (let i = 0; i <= gridLines; i++) {
       const ratio = i / gridLines;
       const y = pad.t + plotH - ratio * plotH;
-      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.strokeStyle = "rgba(255,255,255,0.055)";
+      ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(pad.l, y);
       ctx.lineTo(pad.l + plotW, y);
       ctx.stroke();
-      const val = minY + ratio * yRange;
-      const label = (val >= 0 ? "+₹" : "-₹") + Math.abs(val).toLocaleString("en-IN");
-      ctx.fillText(label, 6, y + 4);
+      const val = geo.domainMin + ratio * (geo.domainMax - geo.domainMin);
+      ctx.fillStyle = "#5b6478";
+      ctx.textAlign = "right";
+      ctx.fillText((val >= 0 ? "+₹" : "-₹") + fmtCompactINR(Math.abs(val)), pad.l - 10, y + 3.5);
     }
+    ctx.textAlign = "left";
 
-    // bars
-    const n = monthly.length;
-    const gap = 6;
-    const barFullW = Math.max(10, plotW / Math.max(1, n));
-    const barW = Math.max(4, barFullW - gap);
+    // zero baseline
+    ctx.strokeStyle = "rgba(255,255,255,0.16)";
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y0);
+    ctx.lineTo(pad.l + plotW, y0);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
+    // bars — monthly P&L, rounded, gradient-filled
+    const barGap = 14;
+    const hoveredIdx = hoveredMonth ? hoveredMonth.idx : -1;
     monthly.forEach(function (m, i) {
-      const x = pad.l + i * barFullW + gap / 2;
-      const y = yFor(m.pnl);
-      const color = m.pnl >= 0 ? "#22c55e" : "#ef4444";
-      ctx.fillStyle = color;
-
-      if (m.pnl >= 0) {
-        const h = Math.max(1, y0 - y);
-        ctx.fillRect(x, y, barW, h);
+      const cx = pad.l + i * barFullW + barFullW / 2;
+      const x = cx - barW / 2;
+      const positive = m.pnl >= 0;
+      const yTop = positive ? yFor(m.pnl) : y0;
+      const h = Math.max(2, Math.abs(yFor(m.pnl) - y0));
+      const grad = ctx.createLinearGradient(0, yTop, 0, yTop + h);
+      if (positive) {
+        grad.addColorStop(0, "#4ee3a0");
+        grad.addColorStop(1, "#1f9d5c");
       } else {
-        const h = Math.max(1, y - y0);
-        ctx.fillRect(x, y0, barW, h);
+        grad.addColorStop(0, "#f5586b");
+        grad.addColorStop(1, "#b7273b");
       }
+      pathRoundedBar(ctx, x, yTop, barW, h, 6, positive);
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = i === hoveredIdx || hoveredIdx === -1 ? 1 : 0.45;
+      ctx.fill();
+      if (i === hoveredIdx) {
+        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
 
-      ctx.fillStyle = "#a3b2c7";
-      ctx.font = "11px Inter, Arial";
-      ctx.fillText(m.month, x - 6, pad.t + plotH + 18);
+      // x-axis month labels — thin decks skip alternating labels to avoid clutter
+      const skip = barFullW < 46 ? 2 : 1;
+      if (i % skip === 0 || i === hoveredIdx) {
+        ctx.fillStyle = i === hoveredIdx ? "#eceef2" : "#5b6478";
+        ctx.font = i === hoveredIdx ? "600 10.5px Inter, Arial" : "500 10.5px Inter, Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(formatMonthLabel(m.month), cx, pad.t + plotH + 18);
+        ctx.textAlign = "left";
+      }
     });
-  }, [monthly]);
+
+    // cumulative equity line, with soft area fill underneath
+    const pts = monthly.map(function (m, i) { return { x: pad.l + i * barFullW + barFullW / 2, y: yFor(m.cumulative) }; });
+
+    const area = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+    area.addColorStop(0, "rgba(91,141,239,0.28)");
+    area.addColorStop(1, "rgba(91,141,239,0.0)");
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pad.t + plotH);
+    pts.forEach(function (p) { ctx.lineTo(p.x, p.y); });
+    ctx.lineTo(pts[pts.length - 1].x, pad.t + plotH);
+    ctx.closePath();
+    ctx.fillStyle = area;
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const midX = (pts[i - 1].x + pts[i].x) / 2;
+      ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, midX, (pts[i - 1].y + pts[i].y) / 2);
+      ctx.quadraticCurveTo(midX, (pts[i - 1].y + pts[i].y) / 2, pts[i].x, pts[i].y);
+    }
+    ctx.strokeStyle = "#5b8def";
+    ctx.lineWidth = 2.2;
+    ctx.shadowColor = "rgba(91,141,239,0.55)";
+    ctx.shadowBlur = 7;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    pts.forEach(function (p, i) {
+      const active = i === hoveredIdx;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, active ? 4.5 : 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = "#0d0f14";
+      ctx.fill();
+      ctx.lineWidth = active ? 2.2 : 1.6;
+      ctx.strokeStyle = "#5b8def";
+      ctx.stroke();
+    });
+
+    // hover crosshair
+    if (hoveredIdx >= 0 && pts[hoveredIdx]) {
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(pts[hoveredIdx].x, pad.t);
+      ctx.lineTo(pts[hoveredIdx].x, pad.t + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, [monthly, hoveredMonth, getChartGeometry, formatMonthLabel, fmtCompactINR, pathRoundedBar]);
 
   useEffect(() => { drawMonthlyChart(); }, [drawMonthlyChart]);
 
@@ -1032,6 +1182,25 @@ useEffect(() => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [drawMonthlyChart]);
+
+  const handleChartMouseMove = useCallback(function (e) {
+    const wrap = monthChartWrapRef.current;
+    const canvas = monthCanvasRef.current;
+    if (!wrap || !canvas || monthly.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const geo = getChartGeometry(wrap.clientWidth);
+    if (x < geo.pad.l - geo.barFullW / 2 || x > geo.pad.l + geo.plotW + geo.barFullW / 2) {
+      setHoveredMonth(null);
+      return;
+    }
+    let idx = Math.round((x - geo.pad.l - geo.barFullW / 2) / geo.barFullW);
+    idx = Math.max(0, Math.min(monthly.length - 1, idx));
+    const left = 8 + geo.pad.l + idx * geo.barFullW + geo.barFullW / 2;
+    setHoveredMonth(function (prev) { return prev && prev.idx === idx ? prev : { idx, left }; });
+  }, [monthly, getChartGeometry]);
+
+  const handleChartMouseLeave = useCallback(function () { setHoveredMonth(null); }, []);
 
   // ---------- ANALYTICS: bet type & league distribution ----------
   const betTypeDistribution = useMemo(() => {
@@ -1083,9 +1252,10 @@ useEffect(() => {
     const map = new Map();
     trades.forEach(function (t) {
       const key = t.league || "Unspecified";
-      if (!map.has(key)) map.set(key, { league: key, count: 0, pctSum: 0, profit: 0 });
+      if (!map.has(key)) map.set(key, { league: key, count: 0, wins: 0, pctSum: 0, profit: 0 });
       const g = map.get(key);
       g.count += 1;
+      if (t.profitLoss > 0) g.wins += 1;
       const p = typeof t.returnPct === "number" ? t.returnPct : parseFloat(t.returnPct);
       g.pctSum += Number.isNaN(p) ? 0 : p;
       g.profit += t.profitLoss;
@@ -1094,6 +1264,7 @@ useEffect(() => {
       return {
         league: g.league,
         count: g.count,
+        winRate: g.count ? Math.round((g.wins / g.count) * 100) : 0,
         totalReturnPct: Number(g.pctSum.toFixed(2)),
         avgReturnPct: g.count ? Number((g.pctSum / g.count).toFixed(2)) : 0,
         profit: Number(g.profit.toFixed(2))
@@ -1145,17 +1316,40 @@ useEffect(() => {
     };
   }, [trades]);
 
-  // Profit factor — gross profit ÷ gross loss. A core strategy-health metric
-  // that stays meaningful even as the trade count grows (unlike an average).
-  const profitFactor = useMemo(() => {
-    let grossProfit = 0;
-    let grossLoss = 0;
-    trades.forEach(function (t) {
-      if (t.profitLoss > 0) grossProfit += t.profitLoss;
-      else if (t.profitLoss < 0) grossLoss += Math.abs(t.profitLoss);
-    });
-    if (grossLoss === 0) return grossProfit > 0 ? Infinity : 0;
-    return Number((grossProfit / grossLoss).toFixed(2));
+  // Highest win-rate bet type / league — a strategy can be profitable with a
+  // low win rate (long-shot value bets) or unprofitable with a high one
+  // (small stakes on heavy favorites), so this is a genuinely separate lens
+  // from "most profitable" and "highest returning" above — not a duplicate.
+  const highestWinRateBetType = useMemo(() => {
+    const eligible = strategyStats.filter(function (g) { return g.count >= 2; });
+    const pool = eligible.length ? eligible : strategyStats;
+    if (pool.length === 0) return null;
+    return pool.reduce(function (best, g) { return !best || g.winRate > best.winRate ? g : best; }, null);
+  }, [strategyStats]);
+
+  const highestWinRateLeague = useMemo(() => {
+    const eligible = leagueStats.filter(function (g) { return g.count >= 2; });
+    const pool = eligible.length ? eligible : leagueStats;
+    if (pool.length === 0) return null;
+    return pool.reduce(function (best, g) { return !best || g.winRate > best.winRate ? g : best; }, null);
+  }, [leagueStats]);
+
+  // Least profitable bet type — the mirror of "most profitable", surfaced so
+  // underperforming strategies are as visible as winning ones. This is a
+  // system-level signal (aggregated across every trade of that type), not a
+  // single flagged trade or a personal streak.
+  const leastProfitableBetType = useMemo(() => {
+    if (strategyStats.length === 0) return null;
+    return strategyStats.reduce(function (worst, g) { return !worst || g.profit < worst.profit ? g : worst; }, null);
+  }, [strategyStats]);
+
+  // Void rate — how often trades settle as void rather than win/loss. High
+  // void rates usually point at market selection or timing issues, so it's
+  // a genuine data-quality signal for the journal, not a vanity number.
+  const voidRate = useMemo(() => {
+    if (trades.length === 0) return { pct: 0, count: 0 };
+    const voids = trades.filter(function (t) { return (t.outcome || "") === "void"; }).length;
+    return { pct: Math.round((voids / trades.length) * 100), count: voids };
   }, [trades]);
 
   // ---------- design tokens ----------
@@ -1231,8 +1425,17 @@ useEffect(() => {
     kpiLabel: { fontSize: 10.5, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: "0.06em" },
     kpiValue: { ...NUM, fontSize: 22, fontWeight: 700, marginTop: 7, letterSpacing: "-0.02em", lineHeight: 1.1 },
     kpiFoot: { fontSize: 11, color: C.textDim, marginTop: 6, letterSpacing: "0.005em", fontWeight: 500, lineHeight: 1.5 },
-    kpiFootRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 6 },
-    kpiFootBtn: { fontSize: 10.5, color: C.accent, background: "transparent", border: "none", padding: 0, cursor: "pointer", fontWeight: 700, fontFamily: FONT_BODY, letterSpacing: "0.01em", textDecoration: "underline", textUnderlineOffset: "2px" },
+    kpiFootRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, flexWrap: "wrap" },
+    kpiFootBtn: {
+      display: "inline-flex", alignItems: "center", gap: 6,
+      fontSize: 10.5, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase",
+      padding: "7px 13px", borderRadius: 999,
+      background: "linear-gradient(135deg, rgba(91,141,239,0.22), rgba(124,111,240,0.22))",
+      border: "1px solid rgba(91,141,239,0.45)",
+      color: "#a9c3fb", cursor: "pointer", fontFamily: FONT_BODY,
+      boxShadow: "0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 14px rgba(91,141,239,0.12)",
+      transition: "all 0.16s ease", whiteSpace: "nowrap"
+    },
 
     // generic panel
     panel: { background: C.surface, border: "1px solid " + C.border, borderRadius: 16, padding: 20, minWidth: 0 },
@@ -1252,7 +1455,16 @@ useEffect(() => {
     // workspace (stacked flow: monthly progress, then recent trades)
     workspace: { display: "flex", flexDirection: "column", gap: 16, marginTop: 16 },
 
-    chartWrap: { width: "100%", borderRadius: 12, border: "1px solid " + C.border, background: "#05060a", padding: 8, marginTop: 14, overflowX: "auto" },
+    chartWrap: { width: "100%", borderRadius: 12, border: "1px solid " + C.border, background: "#05060a", padding: "12px 8px 8px", marginTop: 14, position: "relative" },
+    chartTooltip: { position: "absolute", top: 10, zIndex: 5, transform: "translateX(-50%)", background: "#12141b", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 10, padding: "10px 13px", boxShadow: "0 12px 28px rgba(0,0,0,0.5)", pointerEvents: "none", minWidth: 148 },
+    chartTooltipMonth: { fontSize: 11.5, fontWeight: 700, color: C.text, letterSpacing: "0.005em", marginBottom: 6 },
+    chartTooltipRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, fontSize: 11, marginTop: 3 },
+    chartTooltipLabel: { color: C.textDim, fontWeight: 500, display: "flex", alignItems: "center", gap: 5 },
+    chartTooltipValue: { ...NUM, fontWeight: 700 },
+    chartLegend: { display: "flex", alignItems: "center", gap: 18, marginTop: 12, fontSize: 11, color: C.textDim, fontWeight: 600, flexWrap: "wrap" },
+    chartLegendItem: { display: "inline-flex", alignItems: "center", gap: 7 },
+    chartLegendSwatchBar: { width: 11, height: 11, borderRadius: 3, background: "linear-gradient(180deg, #4ee3a0, #1f9d5c)", flexShrink: 0 },
+    chartLegendSwatchLine: { width: 16, height: 2.5, borderRadius: 2, background: "#5b8def", flexShrink: 0, boxShadow: "0 0 6px rgba(91,141,239,0.6)" },
 
     tradesScroll: { maxHeight: 460, overflowY: "auto", paddingRight: 4, display: "flex", flexDirection: "column", gap: 8 },
     tradeItem: { padding: "13px 14px", borderRadius: 12, background: "#05060a", border: "1px solid " + C.border, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" },
@@ -1347,6 +1559,8 @@ useEffect(() => {
       "html{overflow-x:hidden;}" +
       "body{overflow-x:hidden;}" +
       "*{box-sizing:border-box;}" +
+      ".td-roi-btn:hover{background:linear-gradient(135deg, rgba(91,141,239,0.38), rgba(124,111,240,0.38)) !important;border-color:rgba(91,141,239,0.75) !important;color:#eaf0ff !important;box-shadow:0 1px 0 rgba(255,255,255,0.06) inset, 0 6px 20px rgba(91,141,239,0.32) !important;transform:translateY(-1px);}" +
+      ".td-roi-btn:active{transform:translateY(0);}" +
       "@media (max-width: 1080px){.td-analytics-grid{grid-template-columns:1fr !important;}}" +
       "@media (max-width: 900px){" +
         ".td-shell{flex-direction:column !important;}" +
@@ -1581,7 +1795,9 @@ useEffect(() => {
                 </div>
                 <div style={s.kpiFootRow}>
                   <span style={s.kpiFoot}>baseline ₹{fmtINR(roiBaseline)}</span>
-                  <button style={s.kpiFootBtn} onClick={handleSetRoiBaseline}>Set ROI Baseline</button>
+                  <button style={s.kpiFootBtn} className="td-roi-btn" onClick={handleSetRoiBaseline}>
+                    <Icon name="target" size={11} /> Set ROI Baseline
+                  </button>
                 </div>
               </div>
               <div style={s.kpiCard}>
@@ -1797,7 +2013,42 @@ useEffect(() => {
               </div>
 
               <div ref={monthChartWrapRef} style={s.chartWrap}>
-                <canvas ref={monthCanvasRef} />
+                <canvas
+                  ref={monthCanvasRef}
+                  style={{ display: "block", cursor: monthly.length ? "crosshair" : "default" }}
+                  onMouseMove={handleChartMouseMove}
+                  onMouseLeave={handleChartMouseLeave}
+                />
+                {hoveredMonth && monthly[hoveredMonth.idx] ? (
+                  <div style={{ ...s.chartTooltip, left: hoveredMonth.left }}>
+                    <div style={s.chartTooltipMonth}>{formatMonthLabel(monthly[hoveredMonth.idx].month)}</div>
+                    <div style={s.chartTooltipRow}>
+                      <span style={s.chartTooltipLabel}><span style={s.chartLegendSwatchBar} />Monthly P&amp;L</span>
+                      <span style={{ ...s.chartTooltipValue, color: monthly[hoveredMonth.idx].pnl >= 0 ? C.green : C.red }}>
+                        {(monthly[hoveredMonth.idx].pnl >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(monthly[hoveredMonth.idx].pnl))}
+                      </span>
+                    </div>
+                    <div style={s.chartTooltipRow}>
+                      <span style={s.chartTooltipLabel}><span style={s.chartLegendSwatchLine} />Cumulative</span>
+                      <span style={{ ...s.chartTooltipValue, color: monthly[hoveredMonth.idx].cumulative >= 0 ? C.green : C.red }}>
+                        {(monthly[hoveredMonth.idx].cumulative >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(monthly[hoveredMonth.idx].cumulative))}
+                      </span>
+                    </div>
+                    <div style={s.chartTooltipRow}>
+                      <span style={s.chartTooltipLabel}>Trades</span>
+                      <span style={s.chartTooltipValue}>{monthly[hoveredMonth.idx].trades}</span>
+                    </div>
+                    <div style={s.chartTooltipRow}>
+                      <span style={s.chartTooltipLabel}>Win Rate</span>
+                      <span style={s.chartTooltipValue}>{monthly[hoveredMonth.idx].winPct}%</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={s.chartLegend}>
+                <span style={s.chartLegendItem}><span style={s.chartLegendSwatchBar} />Monthly P&amp;L</span>
+                <span style={s.chartLegendItem}><span style={s.chartLegendSwatchLine} />Cumulative P&amp;L</span>
               </div>
             </div>
 
@@ -1987,13 +2238,55 @@ useEffect(() => {
 
             <div style={s.insightCard}>
               <div style={s.insightHead}>
-                <div style={s.insightIcon}><Icon name="scale" size={13} /></div>
-                <span style={s.insightLabel}>Profit Factor</span>
+                <div style={s.insightIcon}><Icon name="target" size={13} /></div>
+                <span style={s.insightLabel}>Highest Win Rate — Bet Type</span>
               </div>
-              <div style={{ ...s.insightMain, color: profitFactor >= 1 ? C.green : C.red }}>
-                {profitFactor === Infinity ? "∞" : profitFactor}
+              {highestWinRateBetType ? (
+                <>
+                  <div style={{ ...s.insightMain, color: C.green }}>{highestWinRateBetType.winRate}%</div>
+                  <div style={s.insightSub}>{highestWinRateBetType.betType}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Trades</span><span style={s.insightStatValue}>{highestWinRateBetType.count}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="target" size={13} /></div>
+                <span style={s.insightLabel}>Highest Win Rate — League</span>
               </div>
-              <div style={s.insightSub}>Gross profit ÷ gross loss — above 1 means the strategy is net positive.</div>
+              {highestWinRateLeague ? (
+                <>
+                  <div style={{ ...s.insightMain, color: C.green }}>{highestWinRateLeague.winRate}%</div>
+                  <div style={s.insightSub}>{highestWinRateLeague.league}</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Trades</span><span style={s.insightStatValue}>{highestWinRateLeague.count}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="alertTriangle" size={13} /></div>
+                <span style={s.insightLabel}>Least Profitable Bet Type</span>
+              </div>
+              {leastProfitableBetType ? (
+                <>
+                  <div style={{ ...s.insightMain, color: leastProfitableBetType.profit >= 0 ? C.textDim : C.red }}>
+                    {(leastProfitableBetType.profit >= 0 ? "+" : "-") + "₹" + fmtINR(Math.abs(leastProfitableBetType.profit))}
+                  </div>
+                  <div style={s.insightSub}>{leastProfitableBetType.betType} — worth reviewing or cutting.</div>
+                  <div style={s.insightStatRow}><span style={s.insightStatLabel}>Total Trades</span><span style={s.insightStatValue}>{leastProfitableBetType.count}</span></div>
+                </>
+              ) : <span style={s.insightEmpty}>No data yet</span>}
+            </div>
+
+            <div style={s.insightCard}>
+              <div style={s.insightHead}>
+                <div style={s.insightIcon}><Icon name="circle" size={13} /></div>
+                <span style={s.insightLabel}>Void Rate</span>
+              </div>
+              <div style={{ ...s.insightMain, color: voidRate.pct > 15 ? C.amber : C.text }}>{voidRate.pct}%</div>
+              <div style={s.insightSub}>{voidRate.count} of {trades.length} trade{trades.length === 1 ? "" : "s"} voided — high rates often flag market or timing issues.</div>
             </div>
 
             <div style={s.insightCard}>
