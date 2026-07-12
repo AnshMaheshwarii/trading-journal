@@ -1038,7 +1038,7 @@ useEffect(() => {
 
     const dpr = window.devicePixelRatio || 1;
     const geo = getChartGeometry(wrap.clientWidth);
-    const { width, height, pad, plotW, plotH, n, barFullW, barW, yFor, y0 } = geo;
+    const { width, height, pad, plotW, plotH, barFullW, barW, yFor, y0 } = geo;
 
     canvas.style.width = width + "px";
     canvas.style.height = height + "px";
@@ -1085,7 +1085,6 @@ useEffect(() => {
     ctx.setLineDash([]);
 
     // bars — monthly P&L, rounded, gradient-filled
-    const barGap = 14;
     const hoveredIdx = hoveredMonth ? hoveredMonth.idx : -1;
     monthly.forEach(function (m, i) {
       const cx = pad.l + i * barFullW + barFullW / 2;
